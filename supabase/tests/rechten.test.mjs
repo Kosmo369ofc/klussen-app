@@ -142,6 +142,13 @@ await als(baas, 'baas@x.nl', async () => {
   ok('bezoekregel blijft na verwijderen', (await q(`select werkzaamheid_id from bezoekregels where omschrijving = 'Groenafval'`)).rows[0].werkzaamheid_id === null)
 })
 
+// Migratie 0004: vast contract in beurten.
+await db.exec(fs.readFileSync(new URL('../migrations/0004_contractperiode.sql', import.meta.url), 'utf8'))
+await als(baas, 'baas@x.nl', async () => {
+  await q(`update contracten set uren = null, contract_beurten = 2 where klant_id = $1`, [klant])
+  ok('contract in beurten', (await q('select contract_beurten from contracten')).rows[0].contract_beurten === 2)
+})
+
 if (mislukt) {
   console.log(`${mislukt} test(s) mislukt`)
   process.exit(1)

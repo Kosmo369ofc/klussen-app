@@ -39,7 +39,7 @@ const nieuweTaak = (wijziging: Partial<TaakInvoer> = {}): TaakInvoer => ({
   ...wijziging,
 })
 
-const leeg = { uren: '', uurtarief: '', prijsPerBeurt: '', contractbedrag: '', urenPerBeurt: '' }
+const leeg = { uren: '', uurtarief: '', prijsPerBeurt: '', contractbedrag: '', urenPerBeurt: '', contractBeurten: '' }
 
 function naarTekst(n: number | null): string {
   return n === null ? '' : String(n).replace('.', ',')
@@ -106,6 +106,7 @@ export default function KlantBewerken() {
   const [nieuwBestand, setNieuwBestand] = useState<File | null>(null)
   const [beurtSchema, setBeurtSchema] = useState({ aan: false, keer: '1', aantal: '1', eenheid: 'maand' as IntervalEenheid })
   const [termijnen, setTermijnen] = useState(1)
+  const [afgesprokenIn, setAfgesprokenIn] = useState<'uren' | 'beurten'>('uren')
   const [taken, setTaken] = useState<TaakInvoer[]>([])
   const [verwijderd, setVerwijderd] = useState<string[]>([])
   const [bezig, setBezig] = useState(false)
@@ -131,8 +132,10 @@ export default function KlantBewerken() {
         uurtarief: naarTekst(a.uurtarief),
         prijsPerBeurt: naarTekst(a.prijs_per_beurt),
         contractbedrag: naarTekst(a.contractbedrag),
-        urenPerBeurt: naarTekst(a.uren_per_beurt),
+        urenPerBeurt: naarTekst(a.uren_per_beurt ?? null),
+        contractBeurten: naarTekst(a.contract_beurten ?? null),
       })
+      setAfgesprokenIn(a.contract_beurten != null ? 'beurten' : 'uren')
       setBeurtSchema({
         aan: a.beurten_aantal !== null,
         keer: String(a.beurten_keer ?? 1),
@@ -187,14 +190,15 @@ export default function KlantBewerken() {
     const prijsPerBeurt = naarGetal(bedragen.prijsPerBeurt)
     const contractbedrag = naarGetal(bedragen.contractbedrag)
     const urenPerBeurt = naarGetal(bedragen.urenPerBeurt)
+    const contractBeurten = naarGetal(bedragen.contractBeurten)
     const geldig = taken.filter((t) => t.omschrijving.trim())
     const taakGetallen = geldig.flatMap((t) => [t.bedrag, t.uren, t.hoeveelheid].map(naarGetal))
-    if ([uren, uurtarief, prijsPerBeurt, contractbedrag, urenPerBeurt, ...taakGetallen].includes('fout')) {
+    if ([uren, uurtarief, prijsPerBeurt, contractbedrag, urenPerBeurt, contractBeurten, ...taakGetallen].includes('fout')) {
       setFout('Vul uren en bedragen in als getal, bijvoorbeeld 42,50.')
       return
     }
-    if (contractvorm === 'vast_contract' && uren === null) {
-      setFout('Vul de contracturen in.')
+    if (contractvorm === 'vast_contract' && afgesprokenIn === 'beurten' && !heelGetal(bedragen.contractBeurten, 1, 999)) {
+      setFout('Vul het aantal beurten in als heel getal.')
       return
     }
     const schemas = [...geldig.filter((t) => t.hoeVaak === 'schema'), ...(beurtSchema.aan ? [beurtSchema] : [])]
@@ -235,7 +239,8 @@ export default function KlantBewerken() {
 
       const { error: e2 } = await supabase.from('contracten').upsert({
         klant_id: klantId,
-        uren: vast ? uren : null,
+        uren: vast && afgesprokenIn === 'uren' ? uren : null,
+        contract_beurten: vast && afgesprokenIn === 'beurten' ? contractBeurten : null,
         periode,
         contractbedrag: vast ? contractbedrag : null,
         startdatum: vast ? startdatum || null : null,
@@ -309,13 +314,14 @@ export default function KlantBewerken() {
   const vast = contractvorm === 'vast_contract'
   const concept: Afspraken = {
     klant_id: id ?? '',
-    uren: vast ? getal(bedragen.uren) : null,
+    uren: vast && afgesprokenIn === 'uren' ? getal(bedragen.uren) : null,
+    contract_beurten: vast && afgesprokenIn === 'beurten' && heelGetal(bedragen.contractBeurten, 1, 999) ? Number(bedragen.contractBeurten) : null,
     periode,
     uurtarief: getal(bedragen.uurtarief),
     prijs_per_beurt: vast ? null : getal(bedragen.prijsPerBeurt),
     contractbedrag: vast ? getal(bedragen.contractbedrag) : null,
-    startdatum: null,
-    einddatum: null,
+    startdatum: vast ? startdatum || null : null,
+    einddatum: vast ? einddatum || null : null,
     prijsafspraak: null,
     bestand_pad: null,
     bestand_naam: null,
@@ -516,8 +522,17 @@ export default function KlantBewerken() {
 
           {vast ? (
             <>
+              <label>
+                Afgesproken in
+                <select value={afgesprokenIn} onChange={(e) => setAfgesprokenIn(e.target.value as 'uren' | 'beurten')}>
+                  <option value="uren">Uren</option>
+                  <option value="beurten">Beurten</option>
+                </select>
+              </label>
               <div className="twee">
-                {bedragVeld('uren', 'Contracturen', 'Bijv. 8')}
+                {afgesprokenIn === 'uren'
+                  ? bedragVeld('uren', 'Contracturen', 'Bijv. 8')
+                  : bedragVeld('contractBeurten', 'Aantal beurten', 'Bijv. 2')}
                 <label>
                   Per
                   <select value={periode} onChange={(e) => setPeriode(e.target.value as 'maand' | 'jaar')}>

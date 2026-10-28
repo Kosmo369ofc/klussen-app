@@ -70,6 +70,8 @@ export interface Afspraken {
   beurten_aantal: number | null
   beurten_eenheid: IntervalEenheid | null
   uren_per_beurt: number | null
+  // Vast contract in beurten per periode in plaats van uren.
+  contract_beurten: number | null
   // In hoeveel delen per jaar er gefactureerd wordt.
   termijnen: number
 }
