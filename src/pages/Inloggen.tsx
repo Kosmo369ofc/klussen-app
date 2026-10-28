@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
+import logo from '../assets/logo.svg'
 
 // Na inloggen met een code moet je (opnieuw) een wachtwoord kiezen.
 export const WACHTWOORD_KIEZEN = 'klussen-app:wachtwoord-kiezen'
@@ -65,7 +66,10 @@ export default function Inloggen() {
 
   return (
     <main className="pagina smal">
-      <h1>Klussen-app</h1>
+      <div className="inlogscherm">
+        <img src={logo} alt="Darneviel Dienstverlening" />
+      </div>
+      <h1>Inloggen</h1>
       {stap === 'wachtwoord' && (
         <form onSubmit={metWachtwoord} className="formulier">
           {emailVeld}

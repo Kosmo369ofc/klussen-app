@@ -1,11 +1,14 @@
 :root {
-  --groen: #2f6b3a;
-  --groen-licht: #e3efe1;
-  --achtergrond: #f4f1e8;
+  /* Huisstijl Darneviel: olijfgroen, zand en zwart uit het logo. */
+  --groen: #474c3e;
+  --groen-licht: #ebe8dd;
+  --zand: #b9b39a;
+  --zwart: #0d0d0b;
+  --achtergrond: #f5f3ee;
   --kaart: #ffffff;
-  --tekst: #1f2a1f;
-  --grijs: #667066;
-  --rand: #d8d4c8;
+  --tekst: #1d1f18;
+  --grijs: #6b6e62;
+  --rand: #d9d5c7;
   --rood: #a8322d;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--tekst);
@@ -107,7 +110,7 @@ input[type='search'] { margin-bottom: 8px; }
 .taakrij .rij span { white-space: nowrap; }
 .taken li { margin-bottom: 6px; }
 .nodig { color: #9a5b00; font-weight: 600; }
-.afspraken { background: #fff8e6; border: 1px solid #ecd9a8; border-radius: 10px; padding: 10px 14px; margin: 12px 0; }
+.afspraken { background: #f7f5ee; border: 1px solid var(--zand); border-radius: 10px; padding: 10px 14px; margin: 12px 0; }
 .afspraken ul { margin: 6px 0 0; padding-left: 20px; }
 .fotos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .fotos img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; display: block; }
@@ -132,3 +135,11 @@ input[type='search'] { margin-bottom: 8px; }
 .controle { background: var(--kaart); border: 1px solid var(--rand); border-radius: 10px; padding: 10px 14px; margin-top: 10px; }
 .controle ul { margin: 6px 0; padding-left: 20px; }
 
+
+/* Balk met logo bovenaan */
+.balk { background: var(--zwart); color: var(--zand); }
+.balk a { display: flex; align-items: center; gap: 10px; max-width: 760px; margin: 0 auto; padding: 10px 16px; color: var(--zand); text-decoration: none; }
+.balk img { height: 32px; width: auto; }
+.balk span { letter-spacing: 0.3em; font-weight: 600; font-size: 0.95rem; }
+.inlogscherm { background: var(--zwart); border-radius: 14px; padding: 24px; margin-bottom: 20px; text-align: center; }
+.inlogscherm img { width: 100%; max-width: 260px; height: auto; }

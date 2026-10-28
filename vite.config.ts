@@ -12,12 +12,12 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Klussen-app',
-        short_name: 'Klussen',
+        name: 'Darneviel Klussen',
+        short_name: 'Darneviel',
         description: 'Per klant bijhouden wat er bij elk bezoek is gedaan',
         lang: 'nl',
-        theme_color: '#2f6b3a',
-        background_color: '#f4f1e8',
+        theme_color: '#0d0d0b',
+        background_color: '#0d0d0b',
         display: 'standalone',
         icons: [
           { src: 'icoon-192.png', sizes: '192x192', type: 'image/png' },
