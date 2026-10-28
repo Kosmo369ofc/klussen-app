@@ -5,7 +5,7 @@ Werkt op telefoon en laptop; alles staat in één online database, dus het is ov
 
 ## Wat er nu in zit
 
-- Inloggen met een code per e-mail, per medewerker een eigen account
+- Inloggen met e-mail en wachtwoord; de eerste keer (of bij een vergeten wachtwoord) met een code per e-mail, waarna je zelf een wachtwoord kiest
 - Klantenlijst met zoeken, klantkaart met adres (tik om te navigeren), telefoon, notities en de laatste bezoeken
 - Bezoek invoeren: werkzaamheden afvinken, extra werk typen, uren per medewerker, opmerkingen
 - Geen bereik bij het opslaan? Dan bewaart de telefoon het bezoek en verstuurt het zodra er weer internet is

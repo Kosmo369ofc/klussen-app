@@ -113,6 +113,35 @@ await als('00000000-0000-0000-0000-000000000009', 'niemand@x.nl', async () => {
   ok('onbekend account ziet geen overzicht', (await q('select * from klant_laatste_beurt')).rows.length === 0)
 })
 
+// Migratie 0003: prijsopbouw.
+await db.exec(fs.readFileSync(new URL('../migrations/0003_prijsopbouw.sql', import.meta.url), 'utf8'))
+ok('bestaande werkzaamheden 1 keer per interval', (await q(`select keer from werkzaamheden where omschrijving = 'Haag knippen'`)).rows[0].keer === 1)
+const afval = await als(baas, 'baas@x.nl', async () => {
+  const w = (await q(`insert into werkzaamheden (klant_id, omschrijving, wanneer_nodig, meeteenheid) values ($1, 'Groenafval', true, 'm³') returning id`, [klant])).rows[0].id
+  await q(`insert into werkzaamheid_prijzen (werkzaamheid_id, prijs_type, bedrag) values ($1, 'per_eenheid', 35)`, [w])
+  await q(`insert into werkzaamheden (klant_id, omschrijving, keer, interval_aantal, interval_eenheid) values ($1, 'Onkruid', 2, 1, 'maand')`, [klant])
+  await fout('2 keer zonder interval mag niet', () => q(`insert into werkzaamheden (klant_id, omschrijving, keer) values ($1, 'x', 2)`, [klant]))
+  await fout('als nodig én schema mag niet', () => q(`insert into werkzaamheden (klant_id, omschrijving, wanneer_nodig, interval_aantal, interval_eenheid) values ($1, 'x', true, 1, 'maand')`, [klant]))
+  await q(`update contracten set beurten_keer = 2, beurten_aantal = 1, beurten_eenheid = 'maand', uren_per_beurt = 3, termijnen = 4 where klant_id = $1`, [klant])
+  await fout('5 termijnen mag niet', () => q(`update contracten set termijnen = 5 where klant_id = $1`, [klant]))
+  ok('beheerder ziet prijs', (await q('select * from werkzaamheid_prijzen')).rows.length === 1)
+  return w
+})
+await als(jan, 'jan@x.nl', async () => {
+  ok('jan ziet geen prijzen', (await q('select * from werkzaamheid_prijzen')).rows.length === 0)
+  await fout('jan kan geen prijs invullen', () => q(`insert into werkzaamheid_prijzen (werkzaamheid_id, prijs_type, bedrag) values ($1, 'per_keer', 1)`, [afval]))
+  ok('jan ziet de eenheid', (await q(`select meeteenheid from werkzaamheden where id = $1`, [afval])).rows[0].meeteenheid === 'm³')
+  const mid = (await q(`select huidige_medewerker() id`)).rows[0].id
+  await q(`select bezoek_opslaan($1)`, [{ id: '33333333-3333-3333-3333-333333333333', klant_id: klant, datum: '2026-10-29', uren: [{ medewerker_id: mid, uren: 3 }], regels: [{ werkzaamheid_id: afval, omschrijving: 'Groenafval', hoeveelheid: 2.5 }, { werkzaamheid_id: null, omschrijving: 'Vegen' }] }])
+  const r = (await q(`select hoeveelheid from bezoekregels where bezoek_id = '33333333-3333-3333-3333-333333333333' order by omschrijving`)).rows
+  ok('hoeveelheid opgeslagen', Number(r[0].hoeveelheid) === 2.5 && r[1].hoeveelheid === null)
+})
+await als(baas, 'baas@x.nl', async () => {
+  await q(`delete from werkzaamheden where id = $1`, [afval])
+  ok('verwijderen ruimt prijs op', (await q('select * from werkzaamheid_prijzen')).rows.length === 0)
+  ok('bezoekregel blijft na verwijderen', (await q(`select werkzaamheid_id from bezoekregels where omschrijving = 'Groenafval'`)).rows[0].werkzaamheid_id === null)
+})
+
 if (mislukt) {
   console.log(`${mislukt} test(s) mislukt`)
   process.exit(1)

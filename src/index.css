@@ -115,3 +115,17 @@ input[type='search'] { margin-bottom: 8px; }
 .tabs button.actief { padding: 6px 12px; }
 .teller { background: var(--rood); color: white; border-radius: 99px; font-size: 0.75rem; padding: 1px 7px; margin-left: 4px; }
 .menu { flex-wrap: wrap; gap: 8px 18px; font-size: 0.95rem; }
+
+/* Prijsopbouw en schema's */
+.drie { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+@media (max-width: 480px) { .drie { grid-template-columns: 1fr 1fr; } }
+.kort { width: 64px !important; flex: none; }
+.schema span { white-space: nowrap; }
+.knoppen { justify-content: space-between; flex-wrap: wrap; }
+.link.gevaar { color: #b3261e; }
+.hoeveel { margin: 4px 0 8px 28px; }
+.opbouw { margin-top: 10px; overflow-x: auto; }
+.opbouw ul { margin: 6px 0; }
+.schema select { min-width: 110px; }
+.opbouw .tabel { font-size: 0.85em; }
+.opbouw .tabel th, .opbouw .tabel td { padding: 6px 4px; }

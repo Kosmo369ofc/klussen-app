@@ -3,7 +3,7 @@ import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 're
 import { AuthProvider, useAuth } from './lib/auth'
 import { isGeconfigureerd, supabase } from './lib/supabase'
 import { aantalInWachtrij, wachtrijVersturen } from './lib/wachtrij'
-import Inloggen from './pages/Inloggen'
+import Inloggen, { WACHTWOORD_KIEZEN, WachtwoordKiezen } from './pages/Inloggen'
 import Klanten from './pages/Klanten'
 import Klant from './pages/Klant'
 import KlantBewerken from './pages/KlantBewerken'
@@ -42,6 +42,15 @@ function useOpenBeurten(actief: boolean): number {
       .then(({ count }) => setAantal(count ?? 0))
   }, [actief, pathname])
   return aantal
+}
+
+function moetWachtwoordKiezen(gebruiker: { user_metadata?: Record<string, unknown> }): boolean {
+  if (!gebruiker.user_metadata?.wachtwoord_ingesteld) return true
+  try {
+    return localStorage.getItem(WACHTWOORD_KIEZEN) === '1'
+  } catch {
+    return false
+  }
 }
 
 // Wist de bewaarde inlog en de bewaarde versie van de app, en laadt opnieuw.
@@ -86,6 +95,8 @@ function Schil() {
       </main>
     )
   }
+
+  if (moetWachtwoordKiezen(sessie.user)) return <WachtwoordKiezen />
 
   return (
     <>
