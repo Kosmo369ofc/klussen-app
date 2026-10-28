@@ -15,8 +15,8 @@ Het script werkt elk uur alles bij. Nieuwe klanten krijgen vanzelf een map. Een 
 geeft geen nieuwe map: de map krijgt dan alleen een nieuwe naam. Het werkt als de beheerder,
 dus de spreadsheet laat ook zien wat gefactureerd is. Prijzen staan er niet in.
 
-Het script draait in het Google-account van degene in wiens Drive de mappen moeten komen,
-bijvoorbeeld Beau. Doe deze stappen in dat account.
+Zet het script in Beau's Google-account. Met `MAP_ID` komt de map Klussen-app in jullie
+gezamenlijke drive, zodat iedereen die daar toegang heeft hem ziet.
 
 ## Installeren (één keer, ongeveer 10 minuten)
 
@@ -29,6 +29,11 @@ bijvoorbeeld Beau. Doe deze stappen in dat account.
    - `SUPABASE_SLEUTEL`: de **publishable** (of anon) key, dezelfde als `VITE_SUPABASE_ANON_KEY`
      in Netlify. Gebruik nooit de service_role key.
    - `EMAIL`: het e-mailadres waarmee het script in de app inlogt (standaard Beau's account).
+   - `MAP_ID`: waar de map Klussen-app moet komen. Laat leeg voor "Mijn Drive". Voor jullie
+     gezamenlijke drive: open daar de map waarin het moet komen (of de drive zelf) en kopieer uit
+     de adresbalk het stuk na `/folders/`, bijvoorbeeld `0AbCdEfGh...`. Het account waarin het
+     script draait moet in die drive minstens **Inhoudsbeheerder** zijn (bij een gedeelde
+     map: **Bewerker**). Vul dit in vóór de eerste keer uitvoeren.
 4. Klik op het tandwiel **Projectinstellingen**, scrol naar **Scripteigenschappen** en klik op
    **Scripteigenschap toevoegen**. Eigenschap `WACHTWOORD`, waarde: het wachtwoord van dat
    account in de app. Klik op **Scripteigenschappen opslaan**. Alleen de eigenaar van het

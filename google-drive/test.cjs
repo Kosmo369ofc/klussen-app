@@ -4,6 +4,7 @@ let nr = 0; const items = {}; const props = {}; const triggers = []
 const iter = (a) => { let i = 0; return { hasNext: () => i < a.length, next: () => a[i++] } }
 function folder(naam, ouder) { const f = { id: 'f' + ++nr, naam, ouder, trashed: false, kind: [], files: [],
   getId: () => f.id, getName: () => f.naam, setName: (n) => { f.naam = n }, isTrashed: () => f.trashed, getUrl: () => 'https://drive/' + f.id,
+  getParents: () => iter(f.ouder ? [f.ouder] : []), moveTo: (m) => { f.ouder.kind = f.ouder.kind.filter((k) => k !== f); m.kind.push(f); f.ouder = m },
   getFoldersByName: (n) => iter(f.kind.filter((k) => k.naam === n && !k.trashed)),
   createFolder: (n) => { const k = folder(n, f); f.kind.push(k); return k },
   getFilesByName: (n) => iter(f.files.filter((k) => k.naam === n)),
@@ -60,3 +61,8 @@ ctx.bijwerken()
 ok('geen dubbele mappen', hoofd.kind.length === 2 && root.kind.length === 1)
 ok('map hernoemd', carin.naam === 'Carin Bodewes-Jansen' && blad.naam === 'Beurten Carin Bodewes-Jansen')
 ok('foto niet dubbel', fotomap.files.length === 1)
+// In een map in de gezamenlijke drive.
+const gedeeld = folder('Gedeelde drive')
+vm.runInContext(`INSTELLINGEN.MAP_ID = '${gedeeld.id}'`, ctx)
+ctx.bijwerken()
+ok('bestaande map verhuisd naar gezamenlijke drive', gedeeld.kind.length === 1 && gedeeld.kind[0] === hoofd && hoofd.kind.length === 2 && root.kind.length === 0)

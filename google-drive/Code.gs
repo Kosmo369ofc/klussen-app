@@ -14,6 +14,9 @@ const INSTELLINGEN = {
   // niet hier maar bij Projectinstellingen > Scripteigenschappen > WACHTWOORD.
   EMAIL: 'info@darnevieldienstverlening.nl',
   HOOFDMAP: 'Klussen-app',
+  // Leeg: de map komt in "Mijn Drive". Of plak de id van een map in jullie
+  // gezamenlijke drive: het laatste stuk van de link, na /folders/.
+  MAP_ID: '',
 }
 
 // Een uitvoering mag bij Google 6 minuten duren. Foto's die niet meer passen,
@@ -45,7 +48,8 @@ function bijwerken() {
       'bezoekregels(omschrijving,hoeveelheid,werkzaamheid_id),bezoek_fotos(id,pad)&order=datum.desc,aangemaakt_op.desc',
   )
 
-  const hoofdmap = vindOfMaakMap('hoofdmap', DriveApp.getRootFolder(), INSTELLINGEN.HOOFDMAP)
+  const plek = INSTELLINGEN.MAP_ID ? DriveApp.getFolderById(INSTELLINGEN.MAP_ID) : DriveApp.getRootFolder()
+  const hoofdmap = vindOfMaakMap('hoofdmap', plek, INSTELLINGEN.HOOFDMAP)
   const fotoTaken = []
   for (const klant of klanten) {
     const eigen = bezoeken.filter((b) => b.klant_id === klant.id)
@@ -125,6 +129,9 @@ function vindOfMaakMap(sleutel, ouder, naam) {
       const map = DriveApp.getFolderById(id)
       if (!map.isTrashed()) {
         if (map.getName() !== naam) map.setName(naam)
+        // Een andere MAP_ID: verhuis de bestaande map in plaats van een nieuwe te maken.
+        const ouders = map.getParents()
+        if (!(ouders.hasNext() && ouders.next().getId() === ouder.getId())) map.moveTo(ouder)
         return map
       }
     } catch (e) {
