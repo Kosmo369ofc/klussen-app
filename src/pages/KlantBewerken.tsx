@@ -1,11 +1,28 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { frequentieLabel, type Contractvorm, type Frequentie, type Klant, type Werkzaamheid } from '../lib/types'
+import { bekijkLinks } from '../lib/bestanden'
+import type { Afspraken, Contractvorm, IntervalEenheid, Klant, Werkzaamheid } from '../lib/types'
 
-type TaakInvoer = Pick<Werkzaamheid, 'omschrijving' | 'frequentie' | 'actief'> & { id?: string }
+type TaakInvoer = Pick<Werkzaamheid, 'omschrijving' | 'actief'> & {
+  id?: string
+  // '' betekent elke beurt.
+  aantal: string
+  eenheid: IntervalEenheid
+}
 
-const frequenties = Object.keys(frequentieLabel) as Frequentie[]
+// Tekstvelden voor bedragen en uren; leeg betekent: niet ingevuld.
+const leeg = { uren: '', uurtarief: '', prijsPerBeurt: '', contractbedrag: '' }
+
+function naarTekst(n: number | null): string {
+  return n === null ? '' : String(n).replace('.', ',')
+}
+
+function naarGetal(tekst: string): number | null | 'fout' {
+  if (!tekst.trim()) return null
+  const n = Number(tekst.replace(',', '.'))
+  return Number.isFinite(n) && n >= 0 ? n : 'fout'
+}
 
 export default function KlantBewerken() {
   const { id } = useParams()
@@ -14,11 +31,18 @@ export default function KlantBewerken() {
   const [naam, setNaam] = useState('')
   const [adres, setAdres] = useState('')
   const [telefoon, setTelefoon] = useState('')
+  const [contactpersoon, setContactpersoon] = useState('')
   const [notities, setNotities] = useState('')
   const [actief, setActief] = useState(true)
   const [contractvorm, setContractvorm] = useState<Contractvorm>('per_beurt')
-  const [contractUren, setContractUren] = useState('')
+  const [bedragen, setBedragen] = useState(leeg)
   const [periode, setPeriode] = useState<'maand' | 'jaar'>('maand')
+  const [startdatum, setStartdatum] = useState('')
+  const [einddatum, setEinddatum] = useState('')
+  const [prijsafspraak, setPrijsafspraak] = useState('')
+  const [bestand, setBestand] = useState<{ pad: string; naam: string } | null>(null)
+  const [bestandLink, setBestandLink] = useState<string | null>(null)
+  const [nieuwBestand, setNieuwBestand] = useState<File | null>(null)
   const [taken, setTaken] = useState<TaakInvoer[]>([])
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState('')
@@ -30,14 +54,28 @@ export default function KlantBewerken() {
       setNaam(k.naam)
       setAdres(k.adres ?? '')
       setTelefoon(k.telefoon ?? '')
+      setContactpersoon(k.contactpersoon ?? '')
       setNotities(k.notities ?? '')
       setActief(k.actief)
       setContractvorm(k.contractvorm)
     })
-    supabase.from('contracten').select('*').eq('klant_id', id).maybeSingle().then(({ data }) => {
-      if (data) {
-        setContractUren(String(data.uren).replace('.', ','))
-        setPeriode(data.periode)
+    supabase.from('contracten').select('*').eq('klant_id', id).maybeSingle().then(async ({ data }) => {
+      const a = data as Afspraken | null
+      if (!a) return
+      setBedragen({
+        uren: naarTekst(a.uren),
+        uurtarief: naarTekst(a.uurtarief),
+        prijsPerBeurt: naarTekst(a.prijs_per_beurt),
+        contractbedrag: naarTekst(a.contractbedrag),
+      })
+      setPeriode(a.periode)
+      setStartdatum(a.startdatum ?? '')
+      setEinddatum(a.einddatum ?? '')
+      setPrijsafspraak(a.prijsafspraak ?? '')
+      if (a.bestand_pad) {
+        setBestand({ pad: a.bestand_pad, naam: a.bestand_naam ?? 'contract' })
+        const links = await bekijkLinks('contracten', [a.bestand_pad])
+        setBestandLink(links[a.bestand_pad] ?? null)
       }
     })
     supabase
@@ -45,23 +83,47 @@ export default function KlantBewerken() {
       .select('*')
       .eq('klant_id', id)
       .order('volgorde')
-      .then(({ data }) => setTaken((data as Werkzaamheid[]) ?? []))
+      .then(({ data }) =>
+        setTaken(
+          ((data as Werkzaamheid[]) ?? []).map((w) => ({
+            id: w.id,
+            omschrijving: w.omschrijving,
+            actief: w.actief,
+            aantal: w.interval_aantal ? String(w.interval_aantal) : '',
+            eenheid: w.interval_eenheid ?? 'maand',
+          })),
+        ),
+      )
   }, [id])
 
   async function opslaan(e: FormEvent) {
     e.preventDefault()
     setFout('')
-    const uren = Number(contractUren.replace(',', '.'))
-    if (contractvorm === 'vast_contract' && (!contractUren.trim() || !Number.isFinite(uren) || uren < 0)) {
-      setFout('Vul de contracturen in als getal.')
+    const uren = naarGetal(bedragen.uren)
+    const uurtarief = naarGetal(bedragen.uurtarief)
+    const prijsPerBeurt = naarGetal(bedragen.prijsPerBeurt)
+    const contractbedrag = naarGetal(bedragen.contractbedrag)
+    if ([uren, uurtarief, prijsPerBeurt, contractbedrag].includes('fout')) {
+      setFout('Vul uren en bedragen in als getal, bijvoorbeeld 42,50.')
       return
     }
+    if (contractvorm === 'vast_contract' && uren === null) {
+      setFout('Vul de contracturen in.')
+      return
+    }
+    const geldig = taken.filter((t) => t.omschrijving.trim())
+    if (geldig.some((t) => t.aantal && !(Number(t.aantal) >= 1 && Number(t.aantal) <= 99))) {
+      setFout('Een interval moet een heel getal van 1 tot en met 99 zijn.')
+      return
+    }
+
     setBezig(true)
     try {
       const gegevens = {
         naam: naam.trim(),
         adres: adres.trim() || null,
         telefoon: telefoon.trim() || null,
+        contactpersoon: contactpersoon.trim() || null,
         notities: notities.trim() || null,
         actief,
         contractvorm,
@@ -72,23 +134,48 @@ export default function KlantBewerken() {
       if (error) throw error
       const klantId = data.id as string
 
-      if (contractvorm === 'vast_contract') {
-        const { error: e2 } = await supabase.from('contracten').upsert({ klant_id: klantId, uren, periode })
-        if (e2) throw e2
-      } else {
-        await supabase.from('contracten').delete().eq('klant_id', klantId)
+      let bestandGegevens = bestand
+      if (nieuwBestand) {
+        const pad = `${klantId}/${crypto.randomUUID()}-${nieuwBestand.name.replace(/[^\w.-]+/g, '_')}`
+        const { error: eb } = await supabase.storage.from('contracten').upload(pad, nieuwBestand)
+        if (eb) throw eb
+        if (bestand) await supabase.storage.from('contracten').remove([bestand.pad])
+        bestandGegevens = { pad, naam: nieuwBestand.name }
       }
 
-      const geldig = taken.filter((t) => t.omschrijving.trim())
+      const vast = contractvorm === 'vast_contract'
+      const { error: e2 } = await supabase.from('contracten').upsert({
+        klant_id: klantId,
+        uren: vast ? uren : null,
+        periode,
+        contractbedrag: vast ? contractbedrag : null,
+        startdatum: vast ? startdatum || null : null,
+        einddatum: vast ? einddatum || null : null,
+        uurtarief,
+        prijs_per_beurt: prijsPerBeurt,
+        prijsafspraak: prijsafspraak.trim() || null,
+        bestand_pad: bestandGegevens?.pad ?? null,
+        bestand_naam: bestandGegevens?.naam ?? null,
+      })
+      if (e2) throw e2
+
       for (const [volgorde, t] of geldig.entries()) {
-        const rij = { klant_id: klantId, omschrijving: t.omschrijving.trim(), frequentie: t.frequentie, actief: t.actief, volgorde }
+        const rij = {
+          klant_id: klantId,
+          omschrijving: t.omschrijving.trim(),
+          interval_aantal: t.aantal ? Number(t.aantal) : null,
+          interval_eenheid: t.aantal ? t.eenheid : null,
+          actief: t.actief,
+          volgorde,
+        }
         const { error: e3 } = t.id
           ? await supabase.from('werkzaamheden').update(rij).eq('id', t.id)
           : await supabase.from('werkzaamheden').insert(rij)
         if (e3) throw e3
       }
       navigate(`/klanten/${klantId}`, { replace: true, state: { melding: 'Klant opgeslagen.' } })
-    } catch {
+    } catch (fout) {
+      console.error(fout)
       setFout('Opslaan lukte niet. Probeer het opnieuw.')
       setBezig(false)
     }
@@ -96,6 +183,20 @@ export default function KlantBewerken() {
 
   function wijzigTaak(i: number, wijziging: Partial<TaakInvoer>) {
     setTaken(taken.map((t, j) => (j === i ? { ...t, ...wijziging } : t)))
+  }
+
+  function bedragVeld(sleutel: keyof typeof leeg, label: string, placeholder: string) {
+    return (
+      <label>
+        {label}
+        <input
+          inputMode="decimal"
+          placeholder={placeholder}
+          value={bedragen[sleutel]}
+          onChange={(e) => setBedragen({ ...bedragen, [sleutel]: e.target.value })}
+        />
+      </label>
+    )
   }
 
   return (
@@ -111,17 +212,67 @@ export default function KlantBewerken() {
           Adres
           <input value={adres} onChange={(e) => setAdres(e.target.value)} />
         </label>
-        <label>
-          Telefoon
-          <input type="tel" value={telefoon} onChange={(e) => setTelefoon(e.target.value)} />
-        </label>
+        <div className="twee">
+          <label>
+            Contactpersoon
+            <input value={contactpersoon} onChange={(e) => setContactpersoon(e.target.value)} placeholder="Bijv. Jan de Vries" />
+          </label>
+          <label>
+            Telefoon
+            <input type="tel" value={telefoon} onChange={(e) => setTelefoon(e.target.value)} />
+          </label>
+        </div>
         <label>
           Notities voor medewerkers
           <textarea rows={2} value={notities} onChange={(e) => setNotities(e.target.value)} placeholder="Bijv. sleutel ligt onder de mat" />
         </label>
 
         <fieldset>
-          <legend>Contract</legend>
+          <legend>Werkzaamheden</legend>
+          <p className="klein">Kies per werkzaamheid hoe vaak die nodig is. Laat het getal leeg voor elke beurt.</p>
+          {taken.map((t, i) => (
+            <div key={t.id ?? `nieuw-${i}`} className={`taakrij ${t.actief ? '' : 'gedimd'}`}>
+              <input value={t.omschrijving} placeholder="Bijv. gras maaien" onChange={(e) => wijzigTaak(i, { omschrijving: e.target.value })} />
+              <div className="rij">
+                <span>Elke</span>
+                <input
+                  inputMode="numeric"
+                  className="uren"
+                  placeholder="beurt"
+                  value={t.aantal}
+                  onChange={(e) => wijzigTaak(i, { aantal: e.target.value.replace(/\D/g, '') })}
+                />
+                {t.aantal && (
+                  <select value={t.eenheid} onChange={(e) => wijzigTaak(i, { eenheid: e.target.value as IntervalEenheid })}>
+                    <option value="week">{t.aantal === '1' ? 'week' : 'weken'}</option>
+                    <option value="maand">{t.aantal === '1' ? 'maand' : 'maanden'}</option>
+                    <option value="jaar">jaar</option>
+                  </select>
+                )}
+                {t.id ? (
+                  <button type="button" className="link" onClick={() => wijzigTaak(i, { actief: !t.actief })}>
+                    {t.actief ? 'Uitzetten' : 'Aanzetten'}
+                  </button>
+                ) : (
+                  <button type="button" className="link" onClick={() => setTaken(taken.filter((_, j) => j !== i))}>
+                    Weg
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="link"
+            onClick={() => setTaken([...taken, { omschrijving: '', aantal: '', eenheid: 'maand', actief: true }])}
+          >
+            + Werkzaamheid toevoegen
+          </button>
+        </fieldset>
+
+        <fieldset>
+          <legend>Prijsafspraken en contract</legend>
+          <p className="klein">Alleen beheerders zien dit deel.</p>
           <label className="vinkje">
             <input type="radio" checked={contractvorm === 'per_beurt'} onChange={() => setContractvorm('per_beurt')} />
             Factureren per beurt
@@ -131,41 +282,47 @@ export default function KlantBewerken() {
             Vast contract
           </label>
           {contractvorm === 'vast_contract' && (
-            <div className="rij">
-              <input inputMode="decimal" className="uren" placeholder="uren" value={contractUren} onChange={(e) => setContractUren(e.target.value)} />
-              <span>uur per</span>
-              <select value={periode} onChange={(e) => setPeriode(e.target.value as 'maand' | 'jaar')}>
-                <option value="maand">maand</option>
-                <option value="jaar">jaar</option>
-              </select>
-            </div>
+            <>
+              <div className="twee">
+                {bedragVeld('uren', 'Contracturen', 'Bijv. 8')}
+                <label>
+                  Per
+                  <select value={periode} onChange={(e) => setPeriode(e.target.value as 'maand' | 'jaar')}>
+                    <option value="maand">maand</option>
+                    <option value="jaar">jaar</option>
+                  </select>
+                </label>
+              </div>
+              {bedragVeld('contractbedrag', `Contractbedrag per ${periode} (€)`, 'Bijv. 350')}
+              <div className="twee">
+                <label>
+                  Startdatum
+                  <input type="date" value={startdatum} onChange={(e) => setStartdatum(e.target.value)} />
+                </label>
+                <label>
+                  Einddatum
+                  <input type="date" value={einddatum} onChange={(e) => setEinddatum(e.target.value)} />
+                </label>
+              </div>
+            </>
           )}
-        </fieldset>
-
-        <fieldset>
-          <legend>Werkzaamheden</legend>
-          {taken.map((t, i) => (
-            <div key={t.id ?? `nieuw-${i}`} className={`rij ${t.actief ? '' : 'gedimd'}`}>
-              <input value={t.omschrijving} placeholder="Bijv. gras maaien" onChange={(e) => wijzigTaak(i, { omschrijving: e.target.value })} />
-              <select value={t.frequentie} onChange={(e) => wijzigTaak(i, { frequentie: e.target.value as Frequentie })}>
-                {frequenties.map((f) => (
-                  <option key={f} value={f}>{frequentieLabel[f]}</option>
-                ))}
-              </select>
-              {t.id ? (
-                <button type="button" className="link" onClick={() => wijzigTaak(i, { actief: !t.actief })}>
-                  {t.actief ? 'Uitzetten' : 'Aanzetten'}
-                </button>
-              ) : (
-                <button type="button" className="link" onClick={() => setTaken(taken.filter((_, j) => j !== i))}>
-                  Weg
-                </button>
-              )}
-            </div>
-          ))}
-          <button type="button" className="link" onClick={() => setTaken([...taken, { omschrijving: '', frequentie: 'elke_beurt', actief: true }])}>
-            + Werkzaamheid toevoegen
-          </button>
+          <div className="twee">
+            {bedragVeld('uurtarief', 'Uurtarief (€)', 'Bijv. 45')}
+            {bedragVeld('prijsPerBeurt', 'Vaste prijs per beurt (€)', 'Bijv. 120')}
+          </div>
+          <label>
+            Overige prijsafspraken
+            <textarea rows={2} value={prijsafspraak} onChange={(e) => setPrijsafspraak(e.target.value)} placeholder="Bijv. groenafval apart, € 25 per keer" />
+          </label>
+          <label>
+            Contract (pdf of foto)
+            {bestand && (
+              <span className="klein">
+                Huidig: {bestandLink ? <a href={bestandLink} target="_blank" rel="noreferrer">{bestand.naam}</a> : bestand.naam}
+              </span>
+            )}
+            <input type="file" accept="application/pdf,image/*" onChange={(e) => setNieuwBestand(e.target.files?.[0] ?? null)} />
+          </label>
         </fieldset>
 
         <label className="vinkje">

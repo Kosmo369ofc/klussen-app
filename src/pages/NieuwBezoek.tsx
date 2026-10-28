@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { vandaag } from '../lib/datum'
 import { bezoekOpslaan } from '../lib/wachtrij'
+import { fotosUploaden } from '../lib/bestanden'
 import type { Klant, Medewerker, Werkzaamheid } from '../lib/types'
 
 interface UrenRegel {
@@ -24,6 +25,7 @@ export default function NieuwBezoek() {
   const [extra, setExtra] = useState<string[]>([''])
   const [uren, setUren] = useState<UrenRegel[]>([{ medewerker_id: medewerker?.id ?? '', uren: '' }])
   const [opmerkingen, setOpmerkingen] = useState('')
+  const [fotos, setFotos] = useState<File[]>([])
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState('')
 
@@ -81,23 +83,24 @@ export default function NieuwBezoek() {
 
     setBezig(true)
     try {
+      const bezoekId = crypto.randomUUID()
       const resultaat = await bezoekOpslaan({
-        id: crypto.randomUUID(),
+        id: bezoekId,
         klant_id: klantId!,
         datum,
         opmerkingen,
         uren: urenLijst,
         regels,
       })
-      navigate(`/klanten/${klantId}`, {
-        replace: true,
-        state: {
-          melding:
-            resultaat === 'verstuurd'
-              ? 'Bezoek opgeslagen.'
-              : 'Geen internet: het bezoek is op deze telefoon bewaard en wordt verstuurd zodra er weer verbinding is.',
-        },
-      })
+      let melding = 'Bezoek opgeslagen.'
+      if (resultaat === 'bewaard') {
+        melding = 'Geen internet: het bezoek is op deze telefoon bewaard en wordt verstuurd zodra er weer verbinding is.'
+        if (fotos.length) melding += " Foto's kunnen alleen met internet worden meegestuurd."
+      } else if (fotos.length) {
+        const mislukt = await fotosUploaden(bezoekId, fotos)
+        if (mislukt) melding = `Bezoek opgeslagen, maar ${mislukt} van de ${fotos.length} foto's kon niet worden geüpload.`
+      }
+      navigate(`/klanten/${klantId}`, { replace: true, state: { melding } })
     } catch {
       setFout('Opslaan lukte niet. Probeer het opnieuw of meld het aan de beheerder.')
       setBezig(false)
@@ -175,6 +178,22 @@ export default function NieuwBezoek() {
           Opmerkingen
           <textarea rows={3} value={opmerkingen} onChange={(e) => setOpmerkingen(e.target.value)} />
         </label>
+
+        <label>
+          Foto's van het resultaat
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => setFotos([...fotos, ...Array.from(e.target.files ?? [])])}
+          />
+        </label>
+        {fotos.length > 0 && (
+          <p className="klein">
+            {fotos.length === 1 ? '1 foto gekozen' : `${fotos.length} foto's gekozen`}.{' '}
+            <button type="button" className="link" onClick={() => setFotos([])}>Weghalen</button>
+          </p>
+        )}
 
         {fout && <p className="fout">{fout}</p>}
         <button className="groot" disabled={bezig}>
