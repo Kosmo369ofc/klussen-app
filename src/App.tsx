@@ -11,6 +11,7 @@ import NieuwBezoek from './pages/NieuwBezoek'
 import Medewerkers from './pages/Medewerkers'
 import Overzicht from './pages/Overzicht'
 import Facturatie from './pages/Facturatie'
+import Foutvanger from './Foutvanger'
 
 function Wachtrijbalk() {
   const [aantal, setAantal] = useState(aantalInWachtrij())
@@ -68,6 +69,7 @@ async function opnieuwBeginnen() {
 function Schil() {
   const { laden, sessie, medewerker, isBeheerder, fout } = useAuth()
   const openBeurten = useOpenBeurten(isBeheerder)
+  const { pathname } = useLocation()
 
   if (laden) return <main className="pagina"><p>Laden…</p></main>
   if (fout) {
@@ -101,17 +103,19 @@ function Schil() {
   return (
     <>
       <Wachtrijbalk />
-      <Routes>
-        <Route path="/" element={<Klanten />} />
-        <Route path="/klanten/:id" element={<Klant />} />
-        <Route path="/klanten/:id/bezoek" element={<NieuwBezoek />} />
-        {isBeheerder && <Route path="/klanten/nieuw" element={<KlantBewerken />} />}
-        {isBeheerder && <Route path="/klanten/:id/bewerken" element={<KlantBewerken />} />}
-        {isBeheerder && <Route path="/medewerkers" element={<Medewerkers />} />}
-        {isBeheerder && <Route path="/facturatie" element={<Facturatie />} />}
-        <Route path="/overzicht" element={<Overzicht />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <Foutvanger key={pathname}>
+        <Routes>
+          <Route path="/" element={<Klanten />} />
+          <Route path="/klanten/:id" element={<Klant />} />
+          <Route path="/klanten/:id/bezoek" element={<NieuwBezoek />} />
+          {isBeheerder && <Route path="/klanten/nieuw" element={<KlantBewerken />} />}
+          {isBeheerder && <Route path="/klanten/:id/bewerken" element={<KlantBewerken />} />}
+          {isBeheerder && <Route path="/medewerkers" element={<Medewerkers />} />}
+          {isBeheerder && <Route path="/facturatie" element={<Facturatie />} />}
+          <Route path="/overzicht" element={<Overzicht />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Foutvanger>
       <nav className="menu">
         <NavLink to="/" end>Klanten</NavLink>
         <NavLink to="/overzicht">Overzicht</NavLink>
