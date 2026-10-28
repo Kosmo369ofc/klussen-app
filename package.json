@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:db": "node supabase/tests/rechten.test.mjs"
+    "test:db": "node supabase/tests/rechten.test.mjs",
+    "test:drive": "node google-drive/test.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
