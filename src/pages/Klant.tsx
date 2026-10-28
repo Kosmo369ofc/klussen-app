@@ -11,8 +11,10 @@ import {
   type Bezoek,
   type Klant as KlantT,
   type Medewerker,
+  type WerkPrijs,
   type Werkzaamheid,
 } from '../lib/types'
+import PrijsopbouwTabel from './PrijsopbouwTabel'
 
 export default function Klant() {
   const { id } = useParams()
@@ -22,6 +24,7 @@ export default function Klant() {
   const [taken, setTaken] = useState<Werkzaamheid[]>([])
   const [laatst, setLaatst] = useState<Record<string, string | null>>({})
   const [afspraken, setAfspraken] = useState<Afspraken | null>(null)
+  const [prijzen, setPrijzen] = useState<Record<string, WerkPrijs>>({})
   const [contractLink, setContractLink] = useState<string | null>(null)
   const [bezoeken, setBezoeken] = useState<Bezoek[]>([])
   const [fotoLinks, setFotoLinks] = useState<Record<string, string>>({})
@@ -62,11 +65,20 @@ export default function Klant() {
     })
   }, [id, isBeheerder])
 
+  useEffect(() => {
+    if (!isBeheerder || taken.length === 0) return
+    supabase
+      .from('werkzaamheid_prijzen')
+      .select('*')
+      .in('werkzaamheid_id', taken.map((t) => t.id))
+      .then(({ data }) => setPrijzen(Object.fromEntries(((data as WerkPrijs[]) ?? []).map((p) => [p.werkzaamheid_id, p]))))
+  }, [taken, isBeheerder])
+
   const laadBezoeken = useCallback(async () => {
     if (!id) return
     const { data } = await supabase
       .from('bezoeken')
-      .select('*, bezoek_uren(medewerker_id, uren), bezoekregels(id, werkzaamheid_id, omschrijving), bezoek_fotos(id, pad)')
+      .select('*, bezoek_uren(medewerker_id, uren), bezoekregels(id, werkzaamheid_id, omschrijving, hoeveelheid), bezoek_fotos(id, pad)')
       .eq('klant_id', id)
       .order('datum', { ascending: false })
       .limit(alles ? 200 : 3)
@@ -117,13 +129,13 @@ export default function Klant() {
             {klant.contractvorm === 'vast_contract' && afspraken.uren !== null && (
               <li>
                 {toonUren(afspraken.uren)} per {afspraken.periode}
-                {afspraken.contractbedrag !== null && ` voor ${toonEuro(afspraken.contractbedrag)}`}
                 {afspraken.startdatum && `, van ${toonDatum(afspraken.startdatum)}`}
                 {afspraken.einddatum && ` tot ${toonDatum(afspraken.einddatum)}`}
               </li>
             )}
-            {afspraken.uurtarief !== null && <li>Uurtarief {toonEuro(afspraken.uurtarief)}</li>}
-            {afspraken.prijs_per_beurt !== null && <li>{toonEuro(afspraken.prijs_per_beurt)} per beurt</li>}
+            {klant.contractvorm === 'vast_contract' && afspraken.uurtarief !== null && (
+              <li>Meerwerk {toonEuro(afspraken.uurtarief)} per uur</li>
+            )}
             {afspraken.prijsafspraak && <li>{afspraken.prijsafspraak}</li>}
             {afspraken.bestand_naam && (
               <li>
@@ -132,6 +144,7 @@ export default function Klant() {
               </li>
             )}
           </ul>
+          <PrijsopbouwTabel contractvorm={klant.contractvorm} afspraken={afspraken} taken={taken} prijzen={prijzen} />
         </section>
       )}
 
@@ -185,7 +198,11 @@ export default function Klant() {
           </p>
           <ul>
             {b.bezoekregels.map((r) => (
-              <li key={r.id}>{r.omschrijving}</li>
+              <li key={r.id}>
+                {r.omschrijving}
+                {r.hoeveelheid !== null && r.hoeveelheid !== undefined &&
+                  `: ${String(r.hoeveelheid).replace('.', ',')} ${taken.find((t) => t.id === r.werkzaamheid_id)?.meeteenheid ?? ''}`}
+              </li>
             ))}
           </ul>
           {b.opmerkingen && <p className="notitie">{b.opmerkingen}</p>}

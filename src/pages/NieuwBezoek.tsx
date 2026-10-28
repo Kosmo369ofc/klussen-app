@@ -22,6 +22,7 @@ export default function NieuwBezoek() {
 
   const [datum, setDatum] = useState(vandaag())
   const [gedaan, setGedaan] = useState<Set<string>>(new Set())
+  const [hoeveel, setHoeveel] = useState<Record<string, string>>({})
   const [extra, setExtra] = useState<string[]>([''])
   const [uren, setUren] = useState<UrenRegel[]>([{ medewerker_id: medewerker?.id ?? '', uren: '' }])
   const [opmerkingen, setOpmerkingen] = useState('')
@@ -68,8 +69,20 @@ export default function NieuwBezoek() {
       setFout('Elke medewerker mag maar één keer bij de uren staan.')
       return
     }
+    const gedaneTaken = taken.filter((t) => gedaan.has(t.id))
+    const hoeveelheden = new Map(
+      gedaneTaken.filter((t) => t.meeteenheid).map((t) => [t.id, Number((hoeveel[t.id] ?? '').replace(',', '.'))]),
+    )
+    if ([...hoeveelheden.entries()].some(([id, n]) => !(hoeveel[id] ?? '').trim() || !Number.isFinite(n) || n < 0)) {
+      setFout('Vul in hoeveel het was, bijvoorbeeld 2,5.')
+      return
+    }
     const regels = [
-      ...taken.filter((t) => gedaan.has(t.id)).map((t) => ({ werkzaamheid_id: t.id, omschrijving: t.omschrijving })),
+      ...gedaneTaken.map((t) => ({
+        werkzaamheid_id: t.id,
+        omschrijving: t.omschrijving,
+        hoeveelheid: hoeveelheden.get(t.id) ?? null,
+      })),
       ...extra.map((x) => x.trim()).filter(Boolean).map((x) => ({ werkzaamheid_id: null, omschrijving: x })),
     ]
     if (regels.length === 0) {
@@ -120,10 +133,26 @@ export default function NieuwBezoek() {
         <fieldset>
           <legend>Wat is er gedaan?</legend>
           {taken.map((t) => (
-            <label key={t.id} className="vinkje">
-              <input type="checkbox" checked={gedaan.has(t.id)} onChange={() => wisselTaak(t.id)} />
-              {t.omschrijving}
-            </label>
+            <div key={t.id}>
+              <label className="vinkje">
+                <input type="checkbox" checked={gedaan.has(t.id)} onChange={() => wisselTaak(t.id)} />
+                {t.omschrijving}
+              </label>
+              {t.meeteenheid && gedaan.has(t.id) && (
+                <div className="rij hoeveel">
+                  <span>Hoeveel?</span>
+                  <input
+                    inputMode="decimal"
+                    className="uren"
+                    aria-label={`Hoeveel ${t.meeteenheid}`}
+                    placeholder="bijv. 2"
+                    value={hoeveel[t.id] ?? ''}
+                    onChange={(e) => setHoeveel({ ...hoeveel, [t.id]: e.target.value })}
+                  />
+                  <span>{t.meeteenheid}</span>
+                </div>
+              )}
+            </div>
           ))}
           {extra.map((x, i) => (
             <input

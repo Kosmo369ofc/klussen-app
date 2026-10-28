@@ -2,17 +2,44 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { bekijkLinks } from '../lib/bestanden'
-import type { Afspraken, Contractvorm, IntervalEenheid, Klant, Werkzaamheid } from '../lib/types'
+import { termijnLabel } from '../lib/prijs'
+import PrijsopbouwTabel from './PrijsopbouwTabel'
+import type { Afspraken, Contractvorm, IntervalEenheid, Klant, PrijsType, WerkPrijs, Werkzaamheid } from '../lib/types'
 
-type TaakInvoer = Pick<Werkzaamheid, 'omschrijving' | 'actief'> & {
+type HoeVaak = 'beurt' | 'schema' | 'nodig'
+
+// Alles als tekst zoals het in de velden staat; leeg betekent: niet ingevuld.
+interface TaakInvoer {
   id?: string
-  // '' betekent elke beurt.
+  omschrijving: string
+  actief: boolean
+  hoeVaak: HoeVaak
+  keer: string
   aantal: string
   eenheid: IntervalEenheid
+  prijsType: PrijsType
+  bedrag: string
+  uren: string
+  hoeveelheid: string
+  meeteenheid: string
 }
 
-// Tekstvelden voor bedragen en uren; leeg betekent: niet ingevuld.
-const leeg = { uren: '', uurtarief: '', prijsPerBeurt: '', contractbedrag: '' }
+const nieuweTaak = (wijziging: Partial<TaakInvoer> = {}): TaakInvoer => ({
+  omschrijving: '',
+  actief: true,
+  hoeVaak: 'beurt',
+  keer: '1',
+  aantal: '1',
+  eenheid: 'maand',
+  prijsType: 'inbegrepen',
+  bedrag: '',
+  uren: '',
+  hoeveelheid: '',
+  meeteenheid: '',
+  ...wijziging,
+})
+
+const leeg = { uren: '', uurtarief: '', prijsPerBeurt: '', contractbedrag: '', urenPerBeurt: '' }
 
 function naarTekst(n: number | null): string {
   return n === null ? '' : String(n).replace('.', ',')
@@ -22,6 +49,40 @@ function naarGetal(tekst: string): number | null | 'fout' {
   if (!tekst.trim()) return null
   const n = Number(tekst.replace(',', '.'))
   return Number.isFinite(n) && n >= 0 ? n : 'fout'
+}
+
+// Voor de voorbeeldberekening: een fout getal telt als niet ingevuld.
+const getal = (tekst: string) => {
+  const n = naarGetal(tekst)
+  return n === 'fout' ? null : n
+}
+
+function heelGetal(tekst: string, min: number, max: number): boolean {
+  const n = Number(tekst)
+  return Number.isInteger(n) && n >= min && n <= max
+}
+
+function SchemaVelden(props: {
+  keer: string
+  aantal: string
+  eenheid: IntervalEenheid
+  wijzig: (w: { keer?: string; aantal?: string; eenheid?: IntervalEenheid }) => void
+}) {
+  const meer = props.aantal !== '1'
+  return (
+    <div className="rij schema">
+      <input inputMode="numeric" className="kort" aria-label="Aantal keer" value={props.keer}
+        onChange={(e) => props.wijzig({ keer: e.target.value.replace(/\D/g, '') })} />
+      <span>keer per</span>
+      <input inputMode="numeric" className="kort" aria-label="Aantal weken, maanden of jaren" value={props.aantal}
+        onChange={(e) => props.wijzig({ aantal: e.target.value.replace(/\D/g, '') })} />
+      <select value={props.eenheid} onChange={(e) => props.wijzig({ eenheid: e.target.value as IntervalEenheid })}>
+        <option value="week">{meer ? 'weken' : 'week'}</option>
+        <option value="maand">{meer ? 'maanden' : 'maand'}</option>
+        <option value="jaar">jaar</option>
+      </select>
+    </div>
+  )
 }
 
 export default function KlantBewerken() {
@@ -43,7 +104,10 @@ export default function KlantBewerken() {
   const [bestand, setBestand] = useState<{ pad: string; naam: string } | null>(null)
   const [bestandLink, setBestandLink] = useState<string | null>(null)
   const [nieuwBestand, setNieuwBestand] = useState<File | null>(null)
+  const [beurtSchema, setBeurtSchema] = useState({ aan: false, keer: '1', aantal: '1', eenheid: 'maand' as IntervalEenheid })
+  const [termijnen, setTermijnen] = useState(1)
   const [taken, setTaken] = useState<TaakInvoer[]>([])
+  const [verwijderd, setVerwijderd] = useState<string[]>([])
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState('')
 
@@ -67,7 +131,15 @@ export default function KlantBewerken() {
         uurtarief: naarTekst(a.uurtarief),
         prijsPerBeurt: naarTekst(a.prijs_per_beurt),
         contractbedrag: naarTekst(a.contractbedrag),
+        urenPerBeurt: naarTekst(a.uren_per_beurt),
       })
+      setBeurtSchema({
+        aan: a.beurten_aantal !== null,
+        keer: String(a.beurten_keer ?? 1),
+        aantal: String(a.beurten_aantal ?? 1),
+        eenheid: a.beurten_eenheid ?? 'maand',
+      })
+      setTermijnen(a.termijnen ?? 1)
       setPeriode(a.periode)
       setStartdatum(a.startdatum ?? '')
       setEinddatum(a.einddatum ?? '')
@@ -78,22 +150,33 @@ export default function KlantBewerken() {
         setBestandLink(links[a.bestand_pad] ?? null)
       }
     })
-    supabase
-      .from('werkzaamheden')
-      .select('*')
-      .eq('klant_id', id)
-      .order('volgorde')
-      .then(({ data }) =>
-        setTaken(
-          ((data as Werkzaamheid[]) ?? []).map((w) => ({
+    void (async () => {
+      const { data: werk } = await supabase.from('werkzaamheden').select('*').eq('klant_id', id).order('volgorde')
+      const ids = ((werk as Werkzaamheid[]) ?? []).map((w) => w.id)
+      const { data: prijzen } = ids.length
+        ? await supabase.from('werkzaamheid_prijzen').select('*').in('werkzaamheid_id', ids)
+        : { data: [] }
+      const perTaak = new Map(((prijzen as WerkPrijs[]) ?? []).map((p) => [p.werkzaamheid_id, p]))
+      setTaken(
+        ((werk as Werkzaamheid[]) ?? []).map((w) => {
+          const p = perTaak.get(w.id)
+          return nieuweTaak({
             id: w.id,
             omschrijving: w.omschrijving,
             actief: w.actief,
-            aantal: w.interval_aantal ? String(w.interval_aantal) : '',
+            hoeVaak: w.wanneer_nodig ? 'nodig' : w.interval_aantal ? 'schema' : 'beurt',
+            keer: String(w.keer ?? 1),
+            aantal: String(w.interval_aantal ?? 1),
             eenheid: w.interval_eenheid ?? 'maand',
-          })),
-        ),
+            meeteenheid: w.meeteenheid ?? '',
+            prijsType: p?.prijs_type ?? 'inbegrepen',
+            bedrag: naarTekst(p?.bedrag ?? null),
+            uren: naarTekst(p?.uren_per_keer ?? null),
+            hoeveelheid: naarTekst(p?.verwachte_hoeveelheid ?? null),
+          })
+        }),
       )
+    })()
   }, [id])
 
   async function opslaan(e: FormEvent) {
@@ -103,7 +186,10 @@ export default function KlantBewerken() {
     const uurtarief = naarGetal(bedragen.uurtarief)
     const prijsPerBeurt = naarGetal(bedragen.prijsPerBeurt)
     const contractbedrag = naarGetal(bedragen.contractbedrag)
-    if ([uren, uurtarief, prijsPerBeurt, contractbedrag].includes('fout')) {
+    const urenPerBeurt = naarGetal(bedragen.urenPerBeurt)
+    const geldig = taken.filter((t) => t.omschrijving.trim())
+    const taakGetallen = geldig.flatMap((t) => [t.bedrag, t.uren, t.hoeveelheid].map(naarGetal))
+    if ([uren, uurtarief, prijsPerBeurt, contractbedrag, urenPerBeurt, ...taakGetallen].includes('fout')) {
       setFout('Vul uren en bedragen in als getal, bijvoorbeeld 42,50.')
       return
     }
@@ -111,9 +197,13 @@ export default function KlantBewerken() {
       setFout('Vul de contracturen in.')
       return
     }
-    const geldig = taken.filter((t) => t.omschrijving.trim())
-    if (geldig.some((t) => t.aantal && !(Number(t.aantal) >= 1 && Number(t.aantal) <= 99))) {
-      setFout('Een interval moet een heel getal van 1 tot en met 99 zijn.')
+    const schemas = [...geldig.filter((t) => t.hoeVaak === 'schema'), ...(beurtSchema.aan ? [beurtSchema] : [])]
+    if (schemas.some((t) => !heelGetal(t.keer, 1, 31) || !heelGetal(t.aantal, 1, 99))) {
+      setFout('Vul bij "hoe vaak" hele getallen in, bijvoorbeeld 2 keer per 1 maand.')
+      return
+    }
+    if (geldig.some((t) => t.prijsType === 'per_eenheid' && !t.meeteenheid.trim())) {
+      setFout('Vul bij prijs per eenheid in welke eenheid het is, bijvoorbeeld m³.')
       return
     }
 
@@ -143,7 +233,6 @@ export default function KlantBewerken() {
         bestandGegevens = { pad, naam: nieuwBestand.name }
       }
 
-      const vast = contractvorm === 'vast_contract'
       const { error: e2 } = await supabase.from('contracten').upsert({
         klant_id: klantId,
         uren: vast ? uren : null,
@@ -152,26 +241,47 @@ export default function KlantBewerken() {
         startdatum: vast ? startdatum || null : null,
         einddatum: vast ? einddatum || null : null,
         uurtarief,
-        prijs_per_beurt: prijsPerBeurt,
+        prijs_per_beurt: vast ? null : prijsPerBeurt,
         prijsafspraak: prijsafspraak.trim() || null,
+        beurten_keer: beurtSchema.aan ? Number(beurtSchema.keer) : null,
+        beurten_aantal: beurtSchema.aan ? Number(beurtSchema.aantal) : null,
+        beurten_eenheid: beurtSchema.aan ? beurtSchema.eenheid : null,
+        uren_per_beurt: urenPerBeurt,
+        termijnen,
         bestand_pad: bestandGegevens?.pad ?? null,
         bestand_naam: bestandGegevens?.naam ?? null,
       })
       if (e2) throw e2
 
+      if (verwijderd.length) {
+        const { error: ev } = await supabase.from('werkzaamheden').delete().in('id', verwijderd)
+        if (ev) throw ev
+      }
       for (const [volgorde, t] of geldig.entries()) {
+        const schema = t.hoeVaak === 'schema'
         const rij = {
           klant_id: klantId,
           omschrijving: t.omschrijving.trim(),
-          interval_aantal: t.aantal ? Number(t.aantal) : null,
-          interval_eenheid: t.aantal ? t.eenheid : null,
+          keer: schema ? Number(t.keer) : 1,
+          interval_aantal: schema ? Number(t.aantal) : null,
+          interval_eenheid: schema ? t.eenheid : null,
+          wanneer_nodig: t.hoeVaak === 'nodig',
+          meeteenheid: t.prijsType === 'per_eenheid' ? t.meeteenheid.trim() : null,
           actief: t.actief,
           volgorde,
         }
-        const { error: e3 } = t.id
-          ? await supabase.from('werkzaamheden').update(rij).eq('id', t.id)
-          : await supabase.from('werkzaamheden').insert(rij)
+        const { data: w, error: e3 } = t.id
+          ? await supabase.from('werkzaamheden').update(rij).eq('id', t.id).select('id').single()
+          : await supabase.from('werkzaamheden').insert(rij).select('id').single()
         if (e3) throw e3
+        const { error: e4 } = await supabase.from('werkzaamheid_prijzen').upsert({
+          werkzaamheid_id: w.id as string,
+          prijs_type: t.prijsType,
+          bedrag: t.prijsType === 'inbegrepen' ? null : getal(t.bedrag),
+          uren_per_keer: getal(t.uren),
+          verwachte_hoeveelheid: t.prijsType === 'per_eenheid' ? getal(t.hoeveelheid) : null,
+        })
+        if (e4) throw e4
       }
       navigate(`/klanten/${klantId}`, { replace: true, state: { melding: 'Klant opgeslagen.' } })
     } catch (fout) {
@@ -184,6 +294,68 @@ export default function KlantBewerken() {
   function wijzigTaak(i: number, wijziging: Partial<TaakInvoer>) {
     setTaken(taken.map((t, j) => (j === i ? { ...t, ...wijziging } : t)))
   }
+
+  function verwijderTaak(i: number) {
+    const t = taken[i]
+    if (t.id) {
+      const tekst = `"${t.omschrijving || 'Deze werkzaamheid'}" verwijderen? Eerdere bezoeken blijven bewaard. Wil je hem alleen tijdelijk niet tonen, kies dan Uitzetten.`
+      if (!window.confirm(tekst)) return
+      setVerwijderd([...verwijderd, t.id])
+    }
+    setTaken(taken.filter((_, j) => j !== i))
+  }
+
+  // Dezelfde gegevens als na opslaan, voor de berekening onderaan het formulier.
+  const vast = contractvorm === 'vast_contract'
+  const concept: Afspraken = {
+    klant_id: id ?? '',
+    uren: vast ? getal(bedragen.uren) : null,
+    periode,
+    uurtarief: getal(bedragen.uurtarief),
+    prijs_per_beurt: vast ? null : getal(bedragen.prijsPerBeurt),
+    contractbedrag: vast ? getal(bedragen.contractbedrag) : null,
+    startdatum: null,
+    einddatum: null,
+    prijsafspraak: null,
+    bestand_pad: null,
+    bestand_naam: null,
+    beurten_keer: beurtSchema.aan && heelGetal(beurtSchema.keer, 1, 31) ? Number(beurtSchema.keer) : null,
+    beurten_aantal: beurtSchema.aan && heelGetal(beurtSchema.aantal, 1, 99) ? Number(beurtSchema.aantal) : null,
+    beurten_eenheid: beurtSchema.aan ? beurtSchema.eenheid : null,
+    uren_per_beurt: getal(bedragen.urenPerBeurt),
+    termijnen,
+  }
+  const conceptTaken: Werkzaamheid[] = taken
+    .filter((t) => t.omschrijving.trim())
+    .map((t, i) => {
+      const schema = t.hoeVaak === 'schema' && heelGetal(t.keer, 1, 31) && heelGetal(t.aantal, 1, 99)
+      return {
+        id: `t${i}`,
+        klant_id: id ?? '',
+        omschrijving: t.omschrijving,
+        keer: schema ? Number(t.keer) : 1,
+        interval_aantal: schema ? Number(t.aantal) : null,
+        interval_eenheid: schema ? t.eenheid : null,
+        wanneer_nodig: t.hoeVaak === 'nodig',
+        meeteenheid: t.meeteenheid || null,
+        volgorde: i,
+        actief: t.actief,
+      }
+    })
+  const conceptPrijzen: Record<string, WerkPrijs> = Object.fromEntries(
+    taken
+      .filter((t) => t.omschrijving.trim())
+      .map((t, i) => [
+        `t${i}`,
+        {
+          werkzaamheid_id: `t${i}`,
+          prijs_type: t.prijsType,
+          bedrag: getal(t.bedrag),
+          uren_per_keer: getal(t.uren),
+          verwachte_hoeveelheid: getal(t.hoeveelheid),
+        },
+      ]),
+  )
 
   function bedragVeld(sleutel: keyof typeof leeg, label: string, placeholder: string) {
     return (
@@ -229,45 +401,92 @@ export default function KlantBewerken() {
 
         <fieldset>
           <legend>Werkzaamheden</legend>
-          <p className="klein">Kies per werkzaamheid hoe vaak die nodig is. Laat het getal leeg voor elke beurt.</p>
+          <p className="klein">Per werkzaamheid: hoe vaak, hoeveel uur en of er een eigen prijs voor is.</p>
           {taken.map((t, i) => (
             <div key={t.id ?? `nieuw-${i}`} className={`taakrij ${t.actief ? '' : 'gedimd'}`}>
-              <input value={t.omschrijving} placeholder="Bijv. gras maaien" onChange={(e) => wijzigTaak(i, { omschrijving: e.target.value })} />
               <div className="rij">
-                <span>Elke</span>
-                <input
-                  inputMode="numeric"
-                  className="uren"
-                  placeholder="beurt"
-                  value={t.aantal}
-                  onChange={(e) => wijzigTaak(i, { aantal: e.target.value.replace(/\D/g, '') })}
-                />
-                {t.aantal && (
-                  <select value={t.eenheid} onChange={(e) => wijzigTaak(i, { eenheid: e.target.value as IntervalEenheid })}>
-                    <option value="week">{t.aantal === '1' ? 'week' : 'weken'}</option>
-                    <option value="maand">{t.aantal === '1' ? 'maand' : 'maanden'}</option>
-                    <option value="jaar">jaar</option>
+                <input value={t.omschrijving} aria-label="Omschrijving" placeholder="Bijv. gras maaien" onChange={(e) => wijzigTaak(i, { omschrijving: e.target.value })} />
+              </div>
+              <label>
+                Hoe vaak
+                <select value={t.hoeVaak} onChange={(e) => wijzigTaak(i, { hoeVaak: e.target.value as HoeVaak })}>
+                  <option value="beurt">Elke beurt</option>
+                  <option value="schema">Vast schema (bijv. 2 keer per maand)</option>
+                  <option value="nodig">Alleen als het nodig is</option>
+                </select>
+              </label>
+              {t.hoeVaak === 'schema' && (
+                <SchemaVelden keer={t.keer} aantal={t.aantal} eenheid={t.eenheid} wijzig={(w) => wijzigTaak(i, w)} />
+              )}
+              <div className="twee">
+                <label>
+                  Prijs
+                  <select value={t.prijsType} onChange={(e) => wijzigTaak(i, { prijsType: e.target.value as PrijsType })}>
+                    <option value="inbegrepen">Inbegrepen (geen eigen prijs)</option>
+                    <option value="per_keer">Vast bedrag per keer</option>
+                    <option value="per_uur">Per uur</option>
+                    <option value="per_eenheid">Per eenheid (bijv. m³ groenafval)</option>
                   </select>
-                )}
-                {t.id ? (
+                </label>
+                <label>
+                  Uren per keer
+                  <input inputMode="decimal" placeholder="Bijv. 1,5" value={t.uren} onChange={(e) => wijzigTaak(i, { uren: e.target.value })} />
+                </label>
+              </div>
+              {t.prijsType === 'per_eenheid' && (
+                <div className="drie">
+                  <label>
+                    Eenheid
+                    <input placeholder="m³" value={t.meeteenheid} onChange={(e) => wijzigTaak(i, { meeteenheid: e.target.value })} />
+                  </label>
+                  <label>
+                    Prijs per {t.meeteenheid || 'eenheid'} (€)
+                    <input inputMode="decimal" placeholder="Bijv. 35" value={t.bedrag} onChange={(e) => wijzigTaak(i, { bedrag: e.target.value })} />
+                  </label>
+                  <label>
+                    Verwacht per keer
+                    <input inputMode="decimal" placeholder="Bijv. 2" value={t.hoeveelheid} onChange={(e) => wijzigTaak(i, { hoeveelheid: e.target.value })} />
+                  </label>
+                </div>
+              )}
+              {(t.prijsType === 'per_keer' || t.prijsType === 'per_uur') && (
+                <label>
+                  {t.prijsType === 'per_keer' ? 'Bedrag per keer (€)' : 'Uurtarief voor dit werk (€)'}
+                  <input inputMode="decimal" placeholder={t.prijsType === 'per_keer' ? 'Bijv. 60' : 'Bijv. 45'} value={t.bedrag} onChange={(e) => wijzigTaak(i, { bedrag: e.target.value })} />
+                </label>
+              )}
+              {t.prijsType === 'per_eenheid' && (
+                <p className="klein">Bij het bezoek vult de medewerker in hoeveel {t.meeteenheid || 'eenheden'} het was. De app rekent het bedrag uit.</p>
+              )}
+              <div className="rij knoppen">
+                {t.id && (
                   <button type="button" className="link" onClick={() => wijzigTaak(i, { actief: !t.actief })}>
                     {t.actief ? 'Uitzetten' : 'Aanzetten'}
                   </button>
-                ) : (
-                  <button type="button" className="link" onClick={() => setTaken(taken.filter((_, j) => j !== i))}>
-                    Weg
-                  </button>
                 )}
+                <button type="button" className="link gevaar" onClick={() => verwijderTaak(i)}>
+                  Verwijderen
+                </button>
               </div>
             </div>
           ))}
-          <button
-            type="button"
-            className="link"
-            onClick={() => setTaken([...taken, { omschrijving: '', aantal: '', eenheid: 'maand', actief: true }])}
-          >
-            + Werkzaamheid toevoegen
-          </button>
+          <div className="rij knoppen">
+            <button type="button" className="link" onClick={() => setTaken([...taken, nieuweTaak()])}>
+              + Werkzaamheid toevoegen
+            </button>
+            <button
+              type="button"
+              className="link"
+              onClick={() =>
+                setTaken([
+                  ...taken,
+                  nieuweTaak({ omschrijving: 'Groenafval afvoeren', hoeVaak: 'nodig', prijsType: 'per_eenheid', meeteenheid: 'm³' }),
+                ])
+              }
+            >
+              + Groenafval per m³
+            </button>
+          </div>
         </fieldset>
 
         <fieldset>
@@ -281,7 +500,21 @@ export default function KlantBewerken() {
             <input type="radio" checked={contractvorm === 'vast_contract'} onChange={() => setContractvorm('vast_contract')} />
             Vast contract
           </label>
-          {contractvorm === 'vast_contract' && (
+
+          <label>
+            Hoe vaak komen we
+            <select value={beurtSchema.aan ? 'schema' : 'geen'} onChange={(e) => setBeurtSchema({ ...beurtSchema, aan: e.target.value === 'schema' })}>
+              <option value="geen">Geen vast schema</option>
+              <option value="schema">Vast schema (bijv. 2 keer per maand)</option>
+            </select>
+          </label>
+          {beurtSchema.aan && (
+            <SchemaVelden keer={beurtSchema.keer} aantal={beurtSchema.aantal} eenheid={beurtSchema.eenheid}
+              wijzig={(w) => setBeurtSchema({ ...beurtSchema, ...w })} />
+          )}
+          {bedragVeld('urenPerBeurt', 'Uren per beurt', 'Bijv. 3')}
+
+          {vast ? (
             <>
               <div className="twee">
                 {bedragVeld('uren', 'Contracturen', 'Bijv. 8')}
@@ -294,6 +527,7 @@ export default function KlantBewerken() {
                 </label>
               </div>
               {bedragVeld('contractbedrag', `Contractbedrag per ${periode} (€)`, 'Bijv. 350')}
+              {bedragVeld('uurtarief', 'Uurtarief voor meerwerk (€)', 'Bijv. 45')}
               <div className="twee">
                 <label>
                   Startdatum
@@ -305,14 +539,24 @@ export default function KlantBewerken() {
                 </label>
               </div>
             </>
+          ) : (
+            <div className="twee">
+              {bedragVeld('prijsPerBeurt', 'Vaste prijs per beurt (€)', 'Bijv. 130')}
+              {bedragVeld('uurtarief', 'Of uurtarief (€)', 'Bijv. 45')}
+            </div>
           )}
-          <div className="twee">
-            {bedragVeld('uurtarief', 'Uurtarief (€)', 'Bijv. 45')}
-            {bedragVeld('prijsPerBeurt', 'Vaste prijs per beurt (€)', 'Bijv. 120')}
-          </div>
+
           <label>
-            Overige prijsafspraken
-            <textarea rows={2} value={prijsafspraak} onChange={(e) => setPrijsafspraak(e.target.value)} placeholder="Bijv. groenafval apart, € 25 per keer" />
+            Factureren
+            <select value={termijnen} onChange={(e) => setTermijnen(Number(e.target.value))}>
+              {Object.entries(termijnLabel).map(([n, label]) => (
+                <option key={n} value={n}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Overige afspraken
+            <textarea rows={2} value={prijsafspraak} onChange={(e) => setPrijsafspraak(e.target.value)} placeholder="Bijv. sleutel bij de buren, niet op woensdag" />
           </label>
           <label>
             Contract (pdf of foto)
@@ -323,6 +567,12 @@ export default function KlantBewerken() {
             )}
             <input type="file" accept="application/pdf,image/*" onChange={(e) => setNieuwBestand(e.target.files?.[0] ?? null)} />
           </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Prijsopbouw</legend>
+          <p className="klein">Zo rekent de app het uit met wat je hierboven invult.</p>
+          <PrijsopbouwTabel contractvorm={contractvorm} afspraken={concept} taken={conceptTaken} prijzen={conceptPrijzen} />
         </fieldset>
 
         <label className="vinkje">
