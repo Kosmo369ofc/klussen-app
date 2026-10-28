@@ -5,6 +5,7 @@ Werkt op telefoon en laptop; alles staat in één online database, dus het is ov
 
 ## Wat er nu in zit
 
+- Koppeling met Google Drive: per klant een map met de beurten en foto's, zie [google-drive/LEESMIJ.md](google-drive/LEESMIJ.md)
 - Inloggen met e-mail en wachtwoord; de eerste keer (of bij een vergeten wachtwoord) met een code per e-mail, waarna je zelf een wachtwoord kiest
 - Klantenlijst met zoeken, klantkaart met adres (tik om te navigeren), telefoon, notities en de laatste bezoeken
 - Bezoek invoeren: werkzaamheden afvinken, extra werk typen, uren per medewerker, opmerkingen
