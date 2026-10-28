@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
 import { isGeconfigureerd, supabase } from './lib/supabase'
 import { aantalInWachtrij, wachtrijVersturen } from './lib/wachtrij'
@@ -9,6 +9,8 @@ import Klant from './pages/Klant'
 import KlantBewerken from './pages/KlantBewerken'
 import NieuwBezoek from './pages/NieuwBezoek'
 import Medewerkers from './pages/Medewerkers'
+import Overzicht from './pages/Overzicht'
+import Facturatie from './pages/Facturatie'
 
 function Wachtrijbalk() {
   const [aantal, setAantal] = useState(aantalInWachtrij())
@@ -27,8 +29,24 @@ function Wachtrijbalk() {
   )
 }
 
+// Aantal beurten dat nog gefactureerd moet worden, voor in het menu.
+function useOpenBeurten(actief: boolean): number {
+  const { pathname } = useLocation()
+  const [aantal, setAantal] = useState(0)
+  useEffect(() => {
+    if (!actief) return
+    supabase
+      .from('bezoeken')
+      .select('id', { count: 'exact', head: true })
+      .eq('gefactureerd', false)
+      .then(({ count }) => setAantal(count ?? 0))
+  }, [actief, pathname])
+  return aantal
+}
+
 function Schil() {
   const { laden, sessie, medewerker, isBeheerder } = useAuth()
+  const openBeurten = useOpenBeurten(isBeheerder)
 
   if (laden) return <main className="pagina"><p>Laden…</p></main>
   if (!sessie) return <Inloggen />
@@ -54,13 +72,21 @@ function Schil() {
         {isBeheerder && <Route path="/klanten/nieuw" element={<KlantBewerken />} />}
         {isBeheerder && <Route path="/klanten/:id/bewerken" element={<KlantBewerken />} />}
         {isBeheerder && <Route path="/medewerkers" element={<Medewerkers />} />}
+        {isBeheerder && <Route path="/facturatie" element={<Facturatie />} />}
+        <Route path="/overzicht" element={<Overzicht />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <nav className="menu">
         <NavLink to="/" end>Klanten</NavLink>
+        <NavLink to="/overzicht">Overzicht</NavLink>
+        {isBeheerder && (
+          <NavLink to="/facturatie">
+            Facturatie{openBeurten > 0 && <span className="teller">{openBeurten}</span>}
+          </NavLink>
+        )}
         {isBeheerder && <NavLink to="/medewerkers">Medewerkers</NavLink>}
-        <button className="link" onClick={() => supabase.auth.signOut()}>
-          Uitloggen ({medewerker.naam})
+        <button className="link" onClick={() => supabase.auth.signOut()} title={`Uitloggen (${medewerker.naam})`}>
+          Uitloggen
         </button>
       </nav>
     </>

@@ -1,9 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { toonDatum, toonUren } from '../lib/datum'
-import { frequentieLabel, type Bezoek, type Klant as KlantT, type Medewerker, type Werkzaamheid } from '../lib/types'
+import { bekijkLinks } from '../lib/bestanden'
+import { toonDatum, toonEuro, toonUren, vandaag } from '../lib/datum'
+import {
+  intervalLabel,
+  volgendeKeer,
+  type Afspraken,
+  type Bezoek,
+  type Klant as KlantT,
+  type Medewerker,
+  type Werkzaamheid,
+} from '../lib/types'
 
 export default function Klant() {
   const { id } = useParams()
@@ -11,7 +20,11 @@ export default function Klant() {
   const melding = (useLocation().state as { melding?: string } | null)?.melding
   const [klant, setKlant] = useState<KlantT | null>(null)
   const [taken, setTaken] = useState<Werkzaamheid[]>([])
+  const [laatst, setLaatst] = useState<Record<string, string | null>>({})
+  const [afspraken, setAfspraken] = useState<Afspraken | null>(null)
+  const [contractLink, setContractLink] = useState<string | null>(null)
   const [bezoeken, setBezoeken] = useState<Bezoek[]>([])
+  const [fotoLinks, setFotoLinks] = useState<Record<string, string>>({})
   const [namen, setNamen] = useState<Record<string, string>>({})
   const [alles, setAlles] = useState(false)
 
@@ -26,6 +39,13 @@ export default function Klant() {
       .order('volgorde')
       .then(({ data }) => setTaken((data as Werkzaamheid[]) ?? []))
     supabase
+      .from('werkzaamheid_laatst_gedaan')
+      .select('werkzaamheid_id, laatste_datum')
+      .eq('klant_id', id)
+      .then(({ data }) =>
+        setLaatst(Object.fromEntries((data ?? []).map((r) => [r.werkzaamheid_id as string, r.laatste_datum as string | null]))),
+      )
+    supabase
       .from('medewerkers')
       .select('id, naam')
       .then(({ data }) =>
@@ -34,21 +54,42 @@ export default function Klant() {
   }, [id])
 
   useEffect(() => {
+    if (!id || !isBeheerder) return
+    supabase.from('contracten').select('*').eq('klant_id', id).maybeSingle().then(async ({ data }) => {
+      const a = data as Afspraken | null
+      setAfspraken(a)
+      if (a?.bestand_pad) setContractLink((await bekijkLinks('contracten', [a.bestand_pad]))[a.bestand_pad] ?? null)
+    })
+  }, [id, isBeheerder])
+
+  const laadBezoeken = useCallback(async () => {
     if (!id) return
-    supabase
+    const { data } = await supabase
       .from('bezoeken')
-      .select('*, bezoek_uren(medewerker_id, uren), bezoekregels(id, werkzaamheid_id, omschrijving)')
+      .select('*, bezoek_uren(medewerker_id, uren), bezoekregels(id, werkzaamheid_id, omschrijving), bezoek_fotos(id, pad)')
       .eq('klant_id', id)
       .order('datum', { ascending: false })
       .limit(alles ? 200 : 3)
-      .then(({ data }) => setBezoeken((data as Bezoek[]) ?? []))
+    const lijst = (data as Bezoek[]) ?? []
+    setBezoeken(lijst)
+    setFotoLinks(await bekijkLinks('fotos', lijst.flatMap((b) => (b.bezoek_fotos ?? []).map((f) => f.pad))))
   }, [id, alles])
+
+  useEffect(() => {
+    void laadBezoeken()
+  }, [laadBezoeken])
+
+  async function wisselGefactureerd(b: Bezoek) {
+    await supabase.from('bezoeken').update({ gefactureerd: !b.gefactureerd }).eq('id', b.id)
+    void laadBezoeken()
+  }
 
   if (!klant) return <main className="pagina"><p>Laden…</p></main>
 
   const kaartLink = klant.adres
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(klant.adres)}`
     : null
+  const nu = vandaag()
 
   return (
     <main className="pagina">
@@ -60,8 +101,39 @@ export default function Klant() {
       </div>
       <p className="klein">{klant.contractvorm === 'vast_contract' ? 'Vast contract' : 'Per beurt'}</p>
       {kaartLink && <p><a href={kaartLink} target="_blank" rel="noreferrer">{klant.adres}</a></p>}
-      {klant.telefoon && <p><a href={`tel:${klant.telefoon}`}>{klant.telefoon}</a></p>}
+      {(klant.contactpersoon || klant.telefoon) && (
+        <p>
+          {klant.contactpersoon}
+          {klant.contactpersoon && klant.telefoon && ': '}
+          {klant.telefoon && <a href={`tel:${klant.telefoon}`}>{klant.telefoon}</a>}
+        </p>
+      )}
       {klant.notities && <p className="notitie">{klant.notities}</p>}
+
+      {isBeheerder && afspraken && (
+        <section className="afspraken">
+          <strong>Afspraken</strong>
+          <ul>
+            {klant.contractvorm === 'vast_contract' && afspraken.uren !== null && (
+              <li>
+                {toonUren(afspraken.uren)} per {afspraken.periode}
+                {afspraken.contractbedrag !== null && ` voor ${toonEuro(afspraken.contractbedrag)}`}
+                {afspraken.startdatum && `, van ${toonDatum(afspraken.startdatum)}`}
+                {afspraken.einddatum && ` tot ${toonDatum(afspraken.einddatum)}`}
+              </li>
+            )}
+            {afspraken.uurtarief !== null && <li>Uurtarief {toonEuro(afspraken.uurtarief)}</li>}
+            {afspraken.prijs_per_beurt !== null && <li>{toonEuro(afspraken.prijs_per_beurt)} per beurt</li>}
+            {afspraken.prijsafspraak && <li>{afspraken.prijsafspraak}</li>}
+            {afspraken.bestand_naam && (
+              <li>
+                Contract:{' '}
+                {contractLink ? <a href={contractLink} target="_blank" rel="noreferrer">{afspraken.bestand_naam}</a> : afspraken.bestand_naam}
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
 
       <Link className="knop groot" to={`/klanten/${klant.id}/bezoek`}>
         Bezoek invoeren
@@ -72,11 +144,24 @@ export default function Klant() {
         <p className="klein">Nog geen werkzaamheden toegewezen.</p>
       ) : (
         <ul className="taken">
-          {taken.map((t) => (
-            <li key={t.id}>
-              {t.omschrijving} <span className="klein">{frequentieLabel[t.frequentie]}</span>
-            </li>
-          ))}
+          {taken.map((t) => {
+            const vorige = laatst[t.id] ?? null
+            const volgende = volgendeKeer(t, vorige)
+            return (
+              <li key={t.id}>
+                {t.omschrijving} <span className="klein">{intervalLabel(t)}</span>
+                <br />
+                <span className="klein">
+                  {vorige ? `Laatst ${toonDatum(vorige)}` : 'Nog niet gedaan'}
+                  {volgende && (
+                    <span className={volgende <= nu ? 'nodig' : ''}>
+                      {volgende <= nu ? ' · weer nodig' : ` · weer nodig vanaf ${toonDatum(volgende)}`}
+                    </span>
+                  )}
+                </span>
+              </li>
+            )
+          })}
         </ul>
       )}
 
@@ -86,7 +171,14 @@ export default function Klant() {
         <article key={b.id} className="bezoek">
           <div className="kop">
             <strong>{toonDatum(b.datum)}</strong>
-            {b.gefactureerd && <span className="label">gefactureerd</span>}
+            {isBeheerder ? (
+              <label className="vinkje klein">
+                <input type="checkbox" checked={b.gefactureerd} onChange={() => wisselGefactureerd(b)} />
+                Gefactureerd
+              </label>
+            ) : (
+              b.gefactureerd && <span className="label">gefactureerd</span>
+            )}
           </div>
           <p className="klein">
             {b.bezoek_uren.map((u) => `${namen[u.medewerker_id] ?? '?'} ${toonUren(u.uren)}`).join(', ')}
@@ -97,6 +189,17 @@ export default function Klant() {
             ))}
           </ul>
           {b.opmerkingen && <p className="notitie">{b.opmerkingen}</p>}
+          {(b.bezoek_fotos ?? []).length > 0 && (
+            <div className="fotos">
+              {b.bezoek_fotos!.map((f) =>
+                fotoLinks[f.pad] ? (
+                  <a key={f.id} href={fotoLinks[f.pad]} target="_blank" rel="noreferrer">
+                    <img src={fotoLinks[f.pad]} alt="Foto van het resultaat" loading="lazy" />
+                  </a>
+                ) : null,
+              )}
+            </div>
+          )}
         </article>
       ))}
       {!alles && bezoeken.length === 3 && (

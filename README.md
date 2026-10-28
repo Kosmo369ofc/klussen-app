@@ -9,14 +9,20 @@ Werkt op telefoon en laptop; alles staat in één online database, dus het is ov
 - Klantenlijst met zoeken, klantkaart met adres (tik om te navigeren), telefoon, notities en de laatste bezoeken
 - Bezoek invoeren: werkzaamheden afvinken, extra werk typen, uren per medewerker, opmerkingen
 - Geen bereik bij het opslaan? Dan bewaart de telefoon het bezoek en verstuurt het zodra er weer internet is
-- Voor de beheerder: klanten toevoegen en bewerken (contractvorm, contracturen, werkzaamheden) en medewerkers beheren
+- Foto's van het resultaat bij een bezoek (alleen met internet)
+- Per werkzaamheid een eigen interval (elke beurt, elke 2 weken, elke 3 maanden, ...) en wanneer het weer nodig is
+- Overzicht van de laatste beurt per klant, langst geleden bovenaan
+- Voor de beheerder: klanten met contactpersoon, prijsafspraken, contractgegevens en contract als bestand;
+  facturatie-overzicht met per beurt gefactureerd ja of nee; medewerkers beheren
 
-Nog niet: overzichten (uren tegenover contract, beurten om te factureren), export naar Google Sheets en foto's.
+Nog niet: uren tegenover het contract en export naar Google Sheets.
 
 ## Eenmalig instellen
 
 1. Maak een gratis project aan op [supabase.com](https://supabase.com).
 2. Open in Supabase de **SQL Editor**, plak de inhoud van `supabase/migrations/0001_basis.sql` en klik op **Run**.
+   Doe daarna hetzelfde met elk volgend bestand in die map, op volgorde (`0002_wensen.sql`, ...).
+   Een bestand dat al is uitgevoerd, voer je niet nog een keer uit.
 3. Zet jezelf erin als eerste beheerder (in de SQL Editor):
    ```sql
    insert into medewerkers (naam, email, rol) values ('Jouw naam', 'jij@voorbeeld.nl', 'beheerder');

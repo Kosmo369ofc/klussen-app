@@ -18,7 +18,8 @@ alter table storage.objects enable row level security;
 create role authenticated;
 `)
 await db.exec(fs.readFileSync(new URL('../migrations/0001_basis.sql', import.meta.url), 'utf8'))
-await db.exec(`grant usage on schema public, auth to authenticated;
+await db.exec(`grant usage on schema public, auth, storage to authenticated;
+grant all on storage.objects to authenticated; grant usage on sequence storage.objects_id_seq to authenticated;
 grant all on all tables in schema public to authenticated;
 grant execute on all functions in schema public, auth to authenticated;`)
 
@@ -78,6 +79,38 @@ await q(`insert into medewerkers (naam, email) values ('Vreemd', 'vreemd@x.nl')`
 await als(vreemd, 'vreemd@x.nl', async () => {
   await q('select koppel_eigen_account()')
   ok('later toegevoegd account wordt gekoppeld', (await q('select huidige_medewerker() id')).rows[0].id !== null)
+})
+
+// Migratie 0002: bestaande gegevens moeten meegaan.
+await q(`insert into werkzaamheden (klant_id, omschrijving, frequentie) values ($1, 'Haag knippen', 'per_seizoen')`, [klant])
+await db.exec(fs.readFileSync(new URL('../migrations/0002_wensen.sql', import.meta.url), 'utf8'))
+await db.exec(`grant all on all tables in schema public to authenticated;`)
+const haag = (await q(`select interval_aantal, interval_eenheid from werkzaamheden where omschrijving = 'Haag knippen'`)).rows[0]
+ok('per seizoen wordt elke 3 maanden', haag.interval_aantal === 3 && haag.interval_eenheid === 'maand')
+const gras = (await q(`select interval_aantal from werkzaamheden where omschrijving = 'Gras maaien'`)).rows[0]
+ok('elke beurt blijft zonder interval', gras.interval_aantal === null)
+ok('oud gefactureerd bezoek krijgt datum', (await q('select gefactureerd_op from bezoeken')).rows[0].gefactureerd_op !== null)
+
+await als(baas, 'baas@x.nl', async () => {
+  await q(`update contracten set uurtarief = 45, prijsafspraak = 'groenafval apart' where klant_id = $1`, [klant])
+  await q(`update klanten set contactpersoon = 'Mevr. de Vries' where id = $1`, [klant])
+  await fout('interval zonder eenheid mag niet', () => q(`insert into werkzaamheden (klant_id, omschrijving, interval_aantal) values ($1, 'x', 2)`, [klant]))
+  await q(`update bezoeken set gefactureerd = false`)
+  ok('terugzetten wist factuurdatum', (await q('select gefactureerd_op from bezoeken')).rows[0].gefactureerd_op === null)
+  await q(`update bezoeken set gefactureerd = true`)
+  ok('factureren zet datum', (await q('select gefactureerd_op from bezoeken')).rows[0].gefactureerd_op !== null)
+  ok('beheerder ziet laatste beurt', (await q('select laatste_datum from klant_laatste_beurt')).rows[0].laatste_datum !== null)
+})
+await als(jan, 'jan@x.nl', async () => {
+  ok('jan ziet geen prijsafspraken', (await q('select * from contracten')).rows.length === 0)
+  ok('jan ziet laatste beurt', (await q('select laatste_datum from klant_laatste_beurt')).rows[0].laatste_datum !== null)
+  ok('jan ziet wanneer werk laatst gedaan is', (await q('select * from werkzaamheid_laatst_gedaan')).rows.length === 2)
+  await fout('jan kan geen contractbestand uploaden', () => q(`insert into storage.objects (bucket_id, name) values ('contracten', 'x.pdf')`))
+  await q(`insert into storage.objects (bucket_id, name) values ('fotos', 'b/1.jpg')`)
+  ok('jan kan een foto uploaden', true)
+})
+await als('00000000-0000-0000-0000-000000000009', 'niemand@x.nl', async () => {
+  ok('onbekend account ziet geen overzicht', (await q('select * from klant_laatste_beurt')).rows.length === 0)
 })
 
 if (mislukt) {

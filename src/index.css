@@ -14,7 +14,7 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; padding-bottom: 72px; }
+body { margin: 0; padding-bottom: 120px; }
 
 .pagina { max-width: 760px; margin: 0 auto; padding: 16px; }
 .pagina.smal { max-width: 420px; padding-top: 48px; }
@@ -99,3 +99,19 @@ input[type='search'] { margin-bottom: 8px; }
 .menu button.link { color: var(--grijs); font-size: 0.9rem; }
 
 .wachtrij { background: #fff3cd; padding: 10px 16px; text-align: center; font-size: 0.95rem; }
+
+.pagina.breed { max-width: 1100px; }
+.twee { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 480px) { .twee { grid-template-columns: 1fr; } }
+.taakrij { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--rand); }
+.taakrij .rij span { white-space: nowrap; }
+.taken li { margin-bottom: 6px; }
+.nodig { color: #9a5b00; font-weight: 600; }
+.afspraken { background: #fff8e6; border: 1px solid #ecd9a8; border-radius: 10px; padding: 10px 14px; margin: 12px 0; }
+.afspraken ul { margin: 6px 0 0; padding-left: 20px; }
+.fotos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.fotos img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; display: block; }
+.tabs { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.tabs button.actief { padding: 6px 12px; }
+.teller { background: var(--rood); color: white; border-radius: 99px; font-size: 0.75rem; padding: 1px 7px; margin-left: 4px; }
+.menu { flex-wrap: wrap; gap: 8px 18px; font-size: 0.95rem; }
