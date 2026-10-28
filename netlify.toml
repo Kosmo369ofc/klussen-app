@@ -1,0 +1,13 @@
+# Instellingen voor Netlify: bouwen en online zetten bij elke wijziging op main.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Elke pagina (bijv. /klanten/123) opent de app, die zelf het juiste scherm kiest.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

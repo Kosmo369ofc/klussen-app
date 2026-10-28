@@ -45,3 +45,14 @@ npm run test:db  # test de database-opzet en de rechten, zonder Supabase
 Medewerkers zien alle klanten en bezoeken, en voeren hun eigen bezoeken in. Een eigen bezoek kunnen ze
 aanpassen tot het gefactureerd is. Alleen de beheerder kan klanten, werkzaamheden en medewerkers beheren
 en de contracturen zien. Dit wordt in de database afgedwongen, niet alleen in de app.
+
+## Online zetten (Netlify)
+
+1. Log in op [netlify.com](https://www.netlify.com) met je GitHub-account.
+2. Kies **Add new project > Import an existing project > GitHub** en selecteer `klussen-app`.
+   De instellingen komen uit `netlify.toml`.
+3. Voeg bij **Environment variables** toe: `VITE_SUPABASE_URL` en `VITE_SUPABASE_ANON_KEY`
+   (de anon of publishable key) en klik op **Deploy**.
+4. Zet in Supabase bij **Authentication > URL Configuration** de **Site URL** op het adres dat Netlify je geeft.
+
+Daarna zet Netlify elke wijziging op `main` vanzelf online.
