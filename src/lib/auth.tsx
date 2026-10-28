@@ -9,6 +9,8 @@ interface AuthStatus {
   // null als iemand wel is ingelogd maar niet als medewerker bekend is.
   medewerker: Medewerker | null
   isBeheerder: boolean
+  // Wat er misging bij het opstarten, om op het scherm te tonen.
+  fout: string | null
 }
 
 const AuthContext = createContext<AuthStatus>({
@@ -16,18 +18,33 @@ const AuthContext = createContext<AuthStatus>({
   sessie: null,
   medewerker: null,
   isBeheerder: false,
+  fout: null,
 })
+
+// Een verzoek dat nooit antwoordt, mag het opstarten niet eeuwig ophouden.
+function metTijdslimiet<T>(belofte: PromiseLike<T>, ms: number, wat: string): Promise<T> {
+  return Promise.race([
+    Promise.resolve(belofte),
+    new Promise<T>((_, mislukt) => setTimeout(() => mislukt(new Error(`${wat} duurde langer dan ${ms / 1000} seconden`)), ms)),
+  ])
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessie, setSessie] = useState<Session | null>(null)
   const [medewerker, setMedewerker] = useState<Medewerker | null>(null)
   const [laden, setLaden] = useState(true)
+  const [fout, setFout] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSessie(data.session)
-      if (!data.session) setLaden(false)
-    })
+    metTijdslimiet(supabase.auth.getSession(), 15000, 'Sessie ophalen')
+      .then(({ data }) => {
+        setSessie(data.session)
+        if (!data.session) setLaden(false)
+      })
+      .catch((e: unknown) => {
+        setFout(e instanceof Error ? e.message : String(e))
+        setLaden(false)
+      })
     const { data } = supabase.auth.onAuthStateChange((_event, s) => setSessie(s))
     return () => data.subscription.unsubscribe()
   }, [])
@@ -40,21 +57,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setLaden(true)
     void (async () => {
-      await supabase.rpc('koppel_eigen_account')
-      const { data } = await supabase
-        .from('medewerkers')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('actief', true)
-        .maybeSingle()
-      setMedewerker(data as Medewerker | null)
-      setLaden(false)
+      try {
+        await metTijdslimiet(supabase.rpc('koppel_eigen_account'), 15000, 'Account koppelen')
+        const { data, error } = await metTijdslimiet(
+          supabase.from('medewerkers').select('*').eq('user_id', userId).eq('actief', true).maybeSingle(),
+          15000,
+          'Medewerker ophalen',
+        )
+        if (error) throw new Error(error.message)
+        setMedewerker(data as Medewerker | null)
+        setFout(null)
+      } catch (e) {
+        setFout(e instanceof Error ? e.message : String(e))
+      } finally {
+        setLaden(false)
+      }
     })()
   }, [userId])
 
   return (
     <AuthContext.Provider
-      value={{ laden, sessie, medewerker, isBeheerder: medewerker?.rol === 'beheerder' }}
+      value={{ laden, sessie, medewerker, isBeheerder: medewerker?.rol === 'beheerder', fout }}
     >
       {children}
     </AuthContext.Provider>

@@ -44,11 +44,36 @@ function useOpenBeurten(actief: boolean): number {
   return aantal
 }
 
+// Wist de bewaarde inlog en de bewaarde versie van de app, en laadt opnieuw.
+async function opnieuwBeginnen() {
+  try {
+    for (const sleutel of Object.keys(localStorage)) if (sleutel.startsWith('sb-')) localStorage.removeItem(sleutel)
+    const registraties = (await navigator.serviceWorker?.getRegistrations()) ?? []
+    await Promise.all(registraties.map((r) => r.unregister()))
+    for (const naam of (await caches?.keys()) ?? []) await caches.delete(naam)
+  } finally {
+    window.location.replace(import.meta.env.BASE_URL)
+  }
+}
+
 function Schil() {
-  const { laden, sessie, medewerker, isBeheerder } = useAuth()
+  const { laden, sessie, medewerker, isBeheerder, fout } = useAuth()
   const openBeurten = useOpenBeurten(isBeheerder)
 
   if (laden) return <main className="pagina"><p>Laden…</p></main>
+  if (fout) {
+    return (
+      <main className="pagina smal">
+        <h1>Opstarten lukt niet</h1>
+        <p>De app kan de database niet goed bereiken. Controleer je internet en probeer het opnieuw.</p>
+        <p className="klein">Foutmelding: {fout}</p>
+        <div className="formulier">
+          <button onClick={() => window.location.reload()}>Opnieuw proberen</button>
+          <button className="link" onClick={() => void opnieuwBeginnen()}>Uitloggen en opnieuw beginnen</button>
+        </div>
+      </main>
+    )
+  }
   if (!sessie) return <Inloggen />
   if (!medewerker) {
     return (
