@@ -12,6 +12,7 @@ import Medewerkers from './pages/Medewerkers'
 import Overzicht from './pages/Overzicht'
 import Facturatie from './pages/Facturatie'
 import Foutvanger from './Foutvanger'
+import beeldmerk from './assets/beeldmerk.svg'
 
 function Wachtrijbalk() {
   const [aantal, setAantal] = useState(aantalInWachtrij())
@@ -102,6 +103,12 @@ function Schil() {
 
   return (
     <>
+      <header className="balk">
+        <NavLink to="/">
+          <img src={beeldmerk} alt="" />
+          <span>DARNEVIEL</span>
+        </NavLink>
+      </header>
       <Wachtrijbalk />
       <Foutvanger key={pathname}>
         <Routes>
