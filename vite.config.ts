@@ -16,8 +16,8 @@ export default defineConfig({
         short_name: 'Darneviel',
         description: 'Per klant bijhouden wat er bij elk bezoek is gedaan',
         lang: 'nl',
-        theme_color: '#0d0d0b',
-        background_color: '#0d0d0b',
+        theme_color: '#f7f5ef',
+        background_color: '#f7f5ef',
         display: 'standalone',
         icons: [
           { src: 'icoon-192.png', sizes: '192x192', type: 'image/png' },

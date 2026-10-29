@@ -1,9 +1,10 @@
 :root {
-  /* Huisstijl Darneviel: olijfgroen, zand en zwart uit het logo. */
-  --groen: #474c3e;
+  /* Huisstijl Darneviel: groen van de website, zand en olijf uit het logo. */
+  --groen: #465e47;
+  --olijf: #474c3e;
   --groen-licht: #ebe8dd;
   --zand: #b9b39a;
-  --zwart: #0d0d0b;
+  --licht: #f7f5ef;
   --achtergrond: #f5f3ee;
   --kaart: #ffffff;
   --tekst: #1d1f18;
@@ -53,8 +54,8 @@ button, .knop {
   background: var(--groen);
   color: white;
   border: none;
-  border-radius: 8px;
-  padding: 10px 16px;
+  border-radius: 999px;
+  padding: 10px 18px;
   text-decoration: none;
   cursor: pointer;
   text-align: center;
@@ -136,10 +137,10 @@ input[type='search'] { margin-bottom: 8px; }
 .controle ul { margin: 6px 0; padding-left: 20px; }
 
 
-/* Balk met logo bovenaan */
-.balk { background: var(--zwart); color: var(--zand); }
-.balk a { display: flex; align-items: center; gap: 10px; max-width: 760px; margin: 0 auto; padding: 10px 16px; color: var(--zand); text-decoration: none; }
-.balk img { height: 32px; width: auto; }
+/* Balk met logo bovenaan, licht zoals op de website */
+.balk { background: var(--licht); border-bottom: 1px solid var(--rand); }
+.balk a { display: flex; align-items: center; gap: 12px; max-width: 760px; margin: 0 auto; padding: 10px 16px; color: var(--olijf); text-decoration: none; }
+.balk img { height: 34px; width: auto; }
 .balk span { letter-spacing: 0.3em; font-weight: 600; font-size: 0.95rem; }
-.inlogscherm { background: var(--zwart); border-radius: 14px; padding: 24px; margin-bottom: 20px; text-align: center; }
+.inlogscherm { text-align: center; margin-bottom: 12px; }
 .inlogscherm img { width: 100%; max-width: 260px; height: auto; }
