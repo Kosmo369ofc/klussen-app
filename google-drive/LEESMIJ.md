@@ -4,7 +4,7 @@ Dit script zet de beurten uit de app in Google Drive:
 
 ```
 Klussen-app/
-  Urenregistratie medewerkers   (spreadsheet: tabblad "Alle uren" en tabblad "Per week")
+  Urenregistratie medewerkers   (spreadsheet: "Alle uren", "Per week" en een tabblad per medewerker)
   Carin Bodewes/
     Beurten Carin Bodewes   (spreadsheet: datum, werk, uren, wie, opmerkingen, foto's, gefactureerd)
     Foto's/                 (de foto's van de beurten)
