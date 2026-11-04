@@ -44,7 +44,7 @@ export default function Overzicht() {
   }, [])
 
   return (
-    <main className="pagina breed">
+    <main className="pagina">
       <h1>Laatste beurt per klant</h1>
       <p className="klein">Langst geleden bovenaan.</p>
       {rijen === null ? (
