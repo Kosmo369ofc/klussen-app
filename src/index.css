@@ -170,6 +170,16 @@ button.knop-invullen:hover { background: #d6e1d3; }
 .urenformulier { display: flex; flex-direction: column; gap: 10px; background: #faf9f5; border: 1px solid var(--rand); border-radius: 8px; padding: 10px 12px; }
 .urenformulier label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; }
 .urenteller { margin: -2px 0 0; font-weight: 600; color: var(--groen); }
+.klokvak { display: flex; flex-direction: column; gap: 8px; background: var(--kaart); border: 1px solid var(--rand); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+.klokvak.bezig { border: 2px solid var(--groen); border-left-width: 6px; }
+.klokvak strong { font-size: 1.1rem; }
+button.knop-klok { width: 100%; padding: 14px; font-size: 1.1rem; font-weight: 600; border-radius: 12px; }
+button.knop-klok.uit { background: var(--rood); }
+.klokknoppen { display: flex; gap: 8px; align-items: center; }
+.klokknoppen .knop-klok { flex: 1; padding: 11px; }
+.kloktijd { font-size: 1.8rem; font-weight: 700; color: var(--groen); font-variant-numeric: tabular-nums; }
+.klokpunt { display: inline-block; width: 10px; height: 10px; border-radius: 10px; background: #3f9a4a; margin-right: 8px; }
+.klokpunt.pauze { background: var(--zand); }
 .weekacties { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 .weekacties button { width: 100%; padding: 12px; font-weight: 500; }
 .weekacties button.knop-zacht { background: var(--groen-zacht); color: var(--groen); }

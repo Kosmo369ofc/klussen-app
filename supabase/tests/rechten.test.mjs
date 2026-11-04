@@ -184,6 +184,37 @@ await als(jan, 'jan@x.nl', async () => {
   ok('jan kiest een klant per urenregel', (await q(`select count(*)::int n from werkuren where datum = '2026-11-05' and klant_id = $1`, [klant])).rows[0].n === 1)
 })
 
+// Migratie 0007: in- en uitklokken.
+await db.exec(fs.readFileSync(new URL('../migrations/0007_inklokken.sql', import.meta.url), 'utf8').replace(/notify pgrst.*$/m, ''))
+await db.exec('grant all on ingeklokt to authenticated')
+await als(jan, 'jan@x.nl', async () => {
+  await q(`insert into ingeklokt (klant_id) values ($1)`, [klant])
+  await fout('jan klokt niet twee keer in', () => q(`insert into ingeklokt default values`))
+})
+await als(baas, 'baas@x.nl', async () => {
+  ok('beheerder ziet wie ingeklokt is', (await q('select * from ingeklokt')).rows.length === 1)
+  await fout('beheerder klokt niet in voor een ander', () => q(`insert into ingeklokt (medewerker_id) select id from medewerkers where naam = 'Jan'`))
+})
+// Doen alsof jan drie uur geleden begon en al 30 minuten pauze had.
+await q(`update ingeklokt set gestart_op = now() - interval '3 hours', pauze_minuten = 30`)
+await als(jan, 'jan@x.nl', async () => {
+  await q('select pauze_wisselen()')
+  ok('pauze loopt', (await q('select pauze_sinds from ingeklokt')).rows[0].pauze_sinds !== null)
+  await q('select pauze_wisselen()')
+  ok('weer aan het werk', (await q('select pauze_sinds, pauze_minuten from ingeklokt')).rows[0].pauze_sinds === null)
+  const r = (await q('select * from uitklokken()')).rows[0]
+  ok('uitklokken maakt een urenregel', r.pauze_minuten === 30 && r.klant_id === klant && r.eindtijd > r.begintijd)
+  ok('klok gestopt', (await q('select count(*)::int n from ingeklokt')).rows[0].n === 0)
+  await fout('uitklokken zonder inklokken', () => q('select uitklokken()'))
+})
+// Vergeten uit te klokken: de regel stopt om 23:59 op de dag van inklokken.
+await als(jan, 'jan@x.nl', () => q(`insert into ingeklokt default values`))
+await q(`update ingeklokt set gestart_op = now() - interval '2 days'`)
+await als(jan, 'jan@x.nl', async () => {
+  const r = (await q('select * from uitklokken()')).rows[0]
+  ok('vergeten uitklokken stopt om 23:59', r.eindtijd === '23:59:00')
+})
+
 if (mislukt) {
   console.log(`${mislukt} test(s) mislukt`)
   process.exit(1)
