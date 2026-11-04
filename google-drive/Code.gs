@@ -92,7 +92,14 @@ function bijwerken() {
   if (uren) {
     const klantnamen = {}
     for (const k of klanten) klantnamen[k.id] = k.naam
-    schrijfUren(hoofdmap, uren, namen, klantnamen)
+    // Kilometers per dag (na 0010_kilometers.sql); zonder die tabel gewoon zonder km.
+    let km = []
+    try {
+      km = haalAlles(token, 'dagkilometers?select=*&order=datum.desc')
+    } catch (e) {
+      console.warn(`Kilometers overgeslagen: ${e.message}`)
+    }
+    schrijfUren(hoofdmap, uren, namen, klantnamen, km)
   }
 
   let nieuw = 0
@@ -153,13 +160,26 @@ function schrijfBeurten(klant, map, fotomap, bezoeken, namen, eenheden) {
 }
 
 // Urenregistratie staat in een eigen spreadsheet, los van de klantmappen.
-function schrijfUren(hoofdmap, uren, namen, klantnamen) {
+function schrijfUren(hoofdmap, urenregels, namen, klantnamen, km) {
+  // Km staan per dag: bij de eerste regel van die dag. Dagen met alleen km krijgen een eigen regel.
+  const kmVan = {}
+  for (const k of km || []) if (k.km !== null && k.km !== undefined) kmVan[`${k.medewerker_id}|${k.datum}`] = Number(k.km)
+  const metUren = {}
+  for (const u of urenregels) metUren[`${u.medewerker_id}|${u.datum}`] = true
+  const alleenKm = Object.keys(kmVan)
+    .filter((sleutel) => !metUren[sleutel])
+    .map((sleutel) => {
+      const [medewerker_id, datum] = sleutel.split('|')
+      return { medewerker_id, datum, alleenKm: true, begintijd: '', eindtijd: '', pauze_minuten: '', uren: 0, klant_id: null, goedgekeurd: false }
+    })
+  const uren = urenregels.concat(alleenKm)
+  const kmBij = kmEenmaal(kmVan)
   const blad = vindOfMaakBlad('blad:uren', hoofdmap, 'Urenregistratie medewerkers')
   const tabs = blad.getSheets()
   const alle = tabs[0]
   const perWeek = blad.getSheetByName('Per week') || tabs[1] || blad.insertSheet('Per week')
   const klant = (id) => (id ? klantnamen[id] || '?' : '')
-  const kop = ['Week', 'Dag', 'Datum', 'Medewerker', 'Klant', 'Soort', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
+  const kop = ['Week', 'Dag', 'Datum', 'Medewerker', 'Klant', 'Soort', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Km (dag)', 'Opmerking', 'Goedgekeurd']
   const dagen = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
   const rijen = uren.map((u) => [
     weeknummer(u.datum),
@@ -170,10 +190,11 @@ function schrijfUren(hoofdmap, uren, namen, klantnamen) {
     soortNaam(u),
     String(u.begintijd).slice(0, 5),
     String(u.eindtijd).slice(0, 5),
-    Number(u.pauze_minuten),
-    Number(u.uren),
+    u.alleenKm ? '' : Number(u.pauze_minuten),
+    u.alleenKm ? '' : Number(u.uren),
+    kmBij(u),
     u.opmerking || '',
-    u.goedgekeurd ? 'ja' : 'nee',
+    u.alleenKm ? '' : u.goedgekeurd ? 'ja' : 'nee',
   ])
   alle.clearContents()
   alle.setName('Alle uren')
@@ -187,11 +208,17 @@ function schrijfUren(hoofdmap, uren, namen, klantnamen) {
   // Totaal per medewerker per week, nieuwste week bovenaan. Reistijd apart.
   const totaal = {}
   const reis = {}
+  const kmWeek = {}
+  const kmWeekBij = kmEenmaal(kmVan)
   for (const u of uren) {
     const jaar = isoJaar(u.datum)
     const sleutel = `${jaar}|${String(weeknummer(u.datum)).padStart(2, '0')}|${namen[u.medewerker_id] || '?'}`
     totaal[sleutel] = totaal[sleutel] || 0
     reis[sleutel] = reis[sleutel] || 0
+    kmWeek[sleutel] = kmWeek[sleutel] || 0
+    const kmDag = kmWeekBij(u)
+    if (kmDag !== '') kmWeek[sleutel] += kmDag
+    if (u.alleenKm) continue
     if (isReis(u)) reis[sleutel] += Number(u.uren)
     else totaal[sleutel] += Number(u.uren)
   }
@@ -199,9 +226,9 @@ function schrijfUren(hoofdmap, uren, namen, klantnamen) {
     .sort((a, b) => (a.slice(0, 7) === b.slice(0, 7) ? a.localeCompare(b) : b.localeCompare(a)))
     .map((k) => {
       const [jaar, week, naam] = k.split('|')
-      return [Number(jaar), Number(week), naam, Math.round(totaal[k] * 100) / 100, Math.round(reis[k] * 100) / 100]
+      return [Number(jaar), Number(week), naam, Math.round(totaal[k] * 100) / 100, Math.round(reis[k] * 100) / 100, kmWeek[k]]
     })
-  const weekKop = ['Jaar', 'Week', 'Medewerker', 'Uren', 'Reistijd (uren)']
+  const weekKop = ['Jaar', 'Week', 'Medewerker', 'Uren', 'Reistijd (uren)', 'Km']
   perWeek.clearContents()
   perWeek.getRange(1, 1, 1, weekKop.length).setValues([weekKop]).setFontWeight('bold')
   perWeek.setFrozenRows(1)
@@ -215,24 +242,38 @@ function schrijfUren(hoofdmap, uren, namen, klantnamen) {
   for (const id of ids) {
     const naam = tabNaam(namen[id] || '?', gebruikt)
     const tab = vindOfMaakTab(blad, `tab:uren:${id}`, naam)
-    schrijfMedewerkerTab(tab, perMedewerker[id], dagen, klant)
+    schrijfMedewerkerTab(tab, perMedewerker[id], dagen, klant, kmVan)
   }
 }
 
-function schrijfMedewerkerTab(tab, uren, dagen, klant) {
-  const kop = ['Week', 'Dag', 'Datum', 'Klant', 'Soort', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
+// Geeft de km van een dag alleen bij de eerste regel van die dag terug.
+function kmEenmaal(kmVan) {
+  const gehad = {}
+  return (u) => {
+    const sleutel = `${u.medewerker_id}|${u.datum}`
+    if (gehad[sleutel] || kmVan[sleutel] === undefined) return ''
+    gehad[sleutel] = true
+    return kmVan[sleutel]
+  }
+}
+
+function schrijfMedewerkerTab(tab, uren, dagen, klant, kmVan) {
+  const kmBij = kmEenmaal(kmVan || {})
+  const kop = ['Week', 'Dag', 'Datum', 'Klant', 'Soort', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Km (dag)', 'Opmerking', 'Goedgekeurd']
   const leeg = () => kop.map(() => '')
   const rijen = []
   const vet = []
   let huidig = null
   let som = 0
   let somReis = 0
+  let somKm = 0
   const sluitWeek = () => {
     if (huidig === null) return
     const week = huidig.split('|')[1]
     const rij = leeg()
     rij[0] = `Totaal week ${week}`
     rij[8] = Math.round(som * 100) / 100
+    rij[9] = somKm || ''
     rijen.push(rij)
     vet.push(rijen.length + 1)
     if (somReis > 0) {
@@ -260,8 +301,11 @@ function schrijfMedewerkerTab(tab, uren, dagen, klant) {
     huidig = w
     som = 0
     somReis = 0
+    somKm = 0
     const dagUren = opWeek[w].slice().sort((a, b) => (a.datum + a.begintijd).localeCompare(b.datum + b.begintijd))
     for (const u of dagUren) {
+      const kmDag = kmBij(u)
+      if (kmDag !== '') somKm += kmDag
       rijen.push([
         weeknummer(u.datum),
         dagen[new Date(`${u.datum}T12:00:00`).getDay()],
@@ -270,11 +314,13 @@ function schrijfMedewerkerTab(tab, uren, dagen, klant) {
         soortNaam(u),
         String(u.begintijd).slice(0, 5),
         String(u.eindtijd).slice(0, 5),
-        Number(u.pauze_minuten),
-        Number(u.uren),
+        u.alleenKm ? '' : Number(u.pauze_minuten),
+        u.alleenKm ? '' : Number(u.uren),
+        kmDag,
         u.opmerking || '',
-        u.goedgekeurd ? 'ja' : 'nee',
+        u.alleenKm ? '' : u.goedgekeurd ? 'ja' : 'nee',
       ])
+      if (u.alleenKm) continue
       if (isReis(u)) somReis += Number(u.uren)
       else som += Number(u.uren)
     }
@@ -297,6 +343,7 @@ function isReis(u) {
 }
 
 function soortNaam(u) {
+  if (u.alleenKm) return 'Kilometers'
   return isReis(u) ? 'Reistijd' : 'Werk'
 }
 

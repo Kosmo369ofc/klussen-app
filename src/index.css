@@ -190,6 +190,28 @@ button.knop-dagklaar { background: var(--rood); padding: 9px 18px; font-weight: 
 .urenregel.reisregel .tijden { color: var(--olijf); }
 .reislabel { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; color: var(--tekst); }
 .reistotaal { color: var(--grijs); margin-top: -4px; }
+.standveld { display: flex; flex-direction: column; gap: 4px; font-weight: 500; }
+.afsluiten { display: flex; flex-direction: column; gap: 8px; }
+.kmteller { color: var(--groen); }
+.dagknoppen { display: flex; gap: 6px; }
+.dagknoppen .knop-invullen { flex: 1; }
+.dagknoppen .knop-km { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 10px 12px; }
+.kmregel { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid var(--rand); }
+.kmregel > span { display: inline-flex; align-items: center; gap: 6px; }
+.dagkop + .kmregel { border-top: none; padding-top: 0; }
+.kmformulier { display: flex; flex-direction: column; gap: 8px; background: #faf9f5; border: 1px solid var(--rand); border-radius: 8px; padding: 10px 12px; }
+.kmformulier label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; }
+/* Iedereen in de week (opmaak 2C) */
+.mensvakken { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 8px; }
+button.mensvak { width: 100%; display: flex; flex-direction: column; gap: 6px; text-align: left; background: var(--kaart); color: var(--tekst); border: 1px solid var(--rand); border-radius: 10px; padding: 10px 14px; font-weight: 400; }
+button.mensvak:hover { border-color: var(--groen); }
+button.mensvak.gekozen { border: 2px solid var(--groen); }
+.mensrij { display: flex; align-items: center; gap: 10px; }
+.mensuren { margin-left: auto; }
+.avatar { width: 34px; height: 34px; border-radius: 99px; background: var(--groen-zacht); color: var(--groen); display: grid; place-items: center; font-weight: 700; flex: none; }
+.voortgang { height: 6px; border-radius: 9px; background: var(--groen-zacht); overflow: hidden; }
+.voortgang i { display: block; height: 100%; background: var(--groen); border-radius: 9px; }
+.mens-km { display: inline-flex; align-items: center; gap: 6px; }
 .weekacties { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 .weekacties button { width: 100%; padding: 12px; font-weight: 500; }
 .weekacties button.knop-zacht { background: var(--groen-zacht); color: var(--groen); }

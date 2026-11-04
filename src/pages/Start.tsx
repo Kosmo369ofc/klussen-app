@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { vandaag } from '../lib/datum'
-import type { Ingeklokt, Werkuren } from '../lib/types'
+import type { Dagkilometers, Ingeklokt, Werkuren } from '../lib/types'
 import Busje from '../Busje'
 
 // Startscherm (opmaak 6C): de dag als tijdlijn, met onderaan wat er nu loopt.
@@ -38,13 +38,19 @@ export default function Start() {
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState('')
   const [nietKlaar, setNietKlaar] = useState(false)
+  // Kilometerstand van de bus. undefined: tabel bestaat nog niet (SQL nog niet gedraaid).
+  const [kmRij, setKmRij] = useState<Dagkilometers | null | undefined>(undefined)
+  const [stand, setStand] = useState('')
+  const [afsluiten, setAfsluiten] = useState(false)
 
   const laad = useCallback(async () => {
     if (!ik) return
-    const [k, r] = await Promise.all([
+    const [k, r, km] = await Promise.all([
       supabase.from('ingeklokt').select('*').maybeSingle(),
       supabase.from('werkuren').select('*').eq('medewerker_id', ik.id).eq('datum', vandaag()).order('begintijd'),
+      supabase.from('dagkilometers').select('*').eq('medewerker_id', ik.id).order('datum', { ascending: false }).limit(1).maybeSingle(),
     ])
+    setKmRij(km.error ? undefined : ((km.data as Dagkilometers | null) ?? null))
     // Bestaat de tabel nog niet (SQL nog niet gedraaid), dan kan er niet geklokt worden.
     setNietKlaar(!!k.error)
     setKlok(k.error ? null : ((k.data as Ingeklokt | null) ?? null))
@@ -78,9 +84,36 @@ export default function Start() {
     if (error) setFout('Dat lukte niet. Controleer je internet en probeer het opnieuw.')
     await laad()
   }
+  const kmVan = (datum: string) => (kmRij && kmRij.datum === datum ? kmRij : null)
+  const standGetal = stand.trim() === '' ? null : Math.round(Number(stand.replace(/\D/g, '')))
+
   const wissel = (soort: 'werk' | 'reis', klantId: string | null = null) =>
-    stap(() => supabase.rpc('klok_wissel', { nieuwe_soort: soort, klant: klantId }))
-  const dagKlaar = () => stap(() => supabase.rpc('uitklokken'))
+    stap(async () => {
+      // Beginstand van de bus, als die bij het begin van de dag is ingevuld.
+      if (!klok && standGetal !== null && kmRij !== undefined && ik) {
+        const { error } = await supabase.from('dagkilometers').upsert({ medewerker_id: ik.id, datum: vandaag(), beginstand: standGetal })
+        if (error) return { error }
+        setStand('')
+      }
+      return supabase.rpc('klok_wissel', { nieuwe_soort: soort, klant: klantId })
+    })
+  const dagKlaar = () =>
+    stap(async () => {
+      if (standGetal !== null && kmRij !== undefined && ik && start) {
+        const datum = isoDag(start)
+        const begin = kmVan(datum)?.beginstand ?? null
+        const { error } = await supabase.from('dagkilometers').upsert({
+          medewerker_id: ik.id,
+          datum,
+          eindstand: standGetal,
+          ...(begin !== null ? { km: Math.max(0, standGetal - begin) } : {}),
+        })
+        if (error) return { error }
+      }
+      setStand('')
+      setAfsluiten(false)
+      return supabase.rpc('uitklokken')
+    })
   const pauze = () => stap(() => supabase.rpc('pauze_wisselen'))
 
   // Wat er nu loopt.
@@ -98,6 +131,16 @@ export default function Start() {
     if (reist) reisMin += loopt
     else werkMin += loopt
   }
+
+  const kmVandaag = kmVan(vandaag())
+  const beginVanDag = start ? kmVan(isoDag(start))?.beginstand ?? null : null
+  const teLaag = afsluiten && standGetal !== null && beginVanDag !== null && standGetal < beginVanDag
+  const standVeld = (label: string) => (
+    <label className="standveld">
+      {label}
+      <input inputMode="numeric" value={stand} placeholder="Niet verplicht, bijv. 48210" onChange={(e) => setStand(e.target.value)} />
+    </label>
+  )
 
   const klantKeuze = (
     <select value={klant} onChange={(e) => setKlant(e.target.value)} aria-label="Klant">
@@ -127,7 +170,11 @@ export default function Start() {
       <section className="vandaagvak">
         <div className="dagkop">
           <strong>Vandaag</strong>
-          {(werkMin > 0 || reisMin > 0) && <span className="klein">{duur(werkMin)} werk · {duur(reisMin)} reis</span>}
+          {(werkMin > 0 || reisMin > 0) && (
+            <span className="klein">
+              {duur(werkMin)} werk · {duur(reisMin)} reis{kmVandaag?.km != null && ` · ${kmVandaag.km} km`}
+            </span>
+          )}
         </div>
         {regels.length === 0 && !klok ? (
           <p className="klein">Nog niets geklokt.</p>
@@ -156,6 +203,7 @@ export default function Start() {
       ) : klok === undefined ? null : !klok ? (
         <section className="klokvak">
           <strong>{regels.length ? 'Weer verder?' : 'Klaar om te beginnen?'}</strong>
+          {kmRij !== undefined && kmVandaag?.beginstand == null && standVeld('Kilometerstand bus (begin)')}
           {fout && <p className="fout">{fout}</p>}
           {naarReis}
           <span className="klein klokof">of direct aan het werk</span>
@@ -177,22 +225,47 @@ export default function Start() {
           </div>
           {andereDag && <p className="fout">Je bent vergeten te stoppen. Tik op Dag klaar: de regel stopt dan om 23:59. Pas de tijd daarna aan bij Uren invullen.</p>}
           {fout && <p className="fout">{fout}</p>}
-          {reist ? (
-            <>
-              {klantKeuze}
-              {naarWerk}
-            </>
+          {afsluiten ? (
+            <div className="afsluiten">
+              {standVeld('Kilometerstand bus (eind)')}
+              {beginVanDag !== null && (
+                <span className="klein">
+                  Begin: {beginVanDag.toLocaleString('nl-NL')}
+                  {standGetal !== null && !teLaag && <> · <b className="kmteller">{(standGetal - beginVanDag).toLocaleString('nl-NL')} km</b> gereden</>}
+                </span>
+              )}
+              {teLaag && <p className="fout">De eindstand is lager dan de beginstand.</p>}
+              <div className="klokknoppen">
+                <button className="knop-klein" disabled={bezig} onClick={() => setAfsluiten(false)}>Annuleren</button>
+                <button className="knop-dagklaar" disabled={bezig || teLaag} onClick={dagKlaar}>■ Dag afsluiten</button>
+              </div>
+            </div>
           ) : (
-            naarReis
+            <>
+              {reist ? (
+                <>
+                  {klantKeuze}
+                  {naarWerk}
+                </>
+              ) : (
+                naarReis
+              )}
+              <div className="klokknoppen">
+                {!reist && (
+                  <button className="knop-klein" disabled={bezig} onClick={pauze}>
+                    {klok.pauze_sinds ? '▶ Verder werken' : '☕ Pauze'}
+                  </button>
+                )}
+                <button
+                  className="knop-dagklaar"
+                  disabled={bezig}
+                  onClick={() => (kmRij === undefined ? void dagKlaar() : setAfsluiten(true))}
+                >
+                  ■ Dag klaar
+                </button>
+              </div>
+            </>
           )}
-          <div className="klokknoppen">
-            {!reist && (
-              <button className="knop-klein" disabled={bezig} onClick={pauze}>
-                {klok.pauze_sinds ? '▶ Verder werken' : '☕ Pauze'}
-              </button>
-            )}
-            <button className="knop-dagklaar" disabled={bezig} onClick={dagKlaar}>■ Dag klaar</button>
-          </div>
         </section>
       )}
 

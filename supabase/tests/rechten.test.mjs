@@ -267,6 +267,23 @@ await als(jan, 'jan@x.nl', async () => {
   ok('na een fout loopt het werk nog', (await q('select soort from ingeklokt')).rows[0]?.soort === 'werk')
 })
 
+// Migratie 0010: kilometers per dag.
+await db.exec(fs.readFileSync(new URL('../migrations/0010_kilometers.sql', import.meta.url), 'utf8').replace(/notify pgrst.*$/m, ''))
+await db.exec('grant all on dagkilometers to authenticated')
+await als(jan, 'jan@x.nl', async () => {
+  await q(`insert into dagkilometers (datum, beginstand) values ('2026-11-04', 48210)`)
+  await q(`update dagkilometers set eindstand = 48244, km = 34 where datum = '2026-11-04'`)
+  ok('jan zet kilometerstand begin en eind', (await q('select km from dagkilometers')).rows[0].km === 34)
+  await fout('eindstand lager dan beginstand mag niet', () => q(`update dagkilometers set eindstand = 48000 where datum = '2026-11-04'`))
+  await fout('jan schrijft geen km voor een ander', () => q(`insert into dagkilometers (medewerker_id, km) select id, 10 from medewerkers where naam = 'Baas'`))
+})
+await als(baas, 'baas@x.nl', async () => {
+  ok('beheerder ziet de km van jan', (await q('select * from dagkilometers')).rows.length === 1)
+})
+await als(vreemd, 'vreemd@x.nl', async () => {
+  ok('ander ziet geen km van jan', (await q('select * from dagkilometers')).rows.length === 0)
+})
+
 if (mislukt) {
   console.log(`${mislukt} test(s) mislukt`)
   process.exit(1)

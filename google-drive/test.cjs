@@ -26,6 +26,10 @@ const db = {
     { id: 'u3', medewerker_id: 'm1', datum: '2026-10-28', begintijd: '08:00:00', eindtijd: '17:00:00', pauze_minuten: 60, uren: 8, opmerking: null, goedgekeurd: false },
     { id: 'u4', medewerker_id: 'm2', datum: '2026-11-03', begintijd: '06:45:00', eindtijd: '07:30:00', pauze_minuten: 0, uren: 0.75, opmerking: null, goedgekeurd: false, soort: 'reis' },
   ],
+  dagkilometers: [
+    { medewerker_id: 'm2', datum: '2026-11-03', beginstand: 48210, eindstand: 48244, km: 34 },
+    { medewerker_id: 'm2', datum: '2026-11-05', beginstand: null, eindstand: null, km: 12 },
+  ],
   werkzaamheden: [{ id: 'w1', meeteenheid: 'm³' }],
   bezoeken: [{ id: 'b1', klant_id: 'k1', datum: '2026-10-07', opmerkingen: 'nat', gefactureerd: true, bezoek_uren: [{ medewerker_id: 'm1', uren: 2.5 }], bezoekregels: [{ omschrijving: 'Gras', hoeveelheid: null, werkzaamheid_id: null }, { omschrijving: 'Groenafval', hoeveelheid: 3, werkzaamheid_id: 'w1' }], bezoek_fotos: [{ id: 'p1', pad: 'b1/a.jpg' }] }],
 }
@@ -67,12 +71,13 @@ const fotomap = carin.kind.find((k) => k.naam === "Foto's")
 ok('foto gekopieerd', fotomap.files.length === 1 && fotomap.files[0].naam === '2026-10-07 a.jpg')
 const uren = Object.values(items).find((x) => x.naam === 'Urenregistratie medewerkers')
 ok('apart urenbestand in hoofdmap', uren && uren.map === hoofd)
-ok('alle uren met week en wie', uren.tabs[0].naam === 'Alle uren' && uren.tabs[0].cel['2,1'] === 45 && uren.tabs[0].cel['2,2'] === 'dinsdag' && uren.tabs[0].cel['2,4'] === 'Jan' && uren.tabs[0].cel['2,5'] === '' && uren.tabs[0].cel['3,5'] === 'Carin Bodewes' && uren.tabs[0].cel['2,6'] === 'Werk' && uren.tabs[0].cel['2,7'] === '07:30' && uren.tabs[0].cel['3,11'] === 'werkplaats' && uren.tabs[0].cel['5,6'] === 'Reistijd')
-ok('per week opgeteld, nieuwste bovenaan', uren.tabs[1].naam === 'Per week' && uren.tabs[1].cel['2,2'] === 45 && uren.tabs[1].cel['2,4'] === 12 && uren.tabs[1].cel['2,5'] === 0.75 && uren.tabs[1].cel['3,2'] === 44 && uren.tabs[1].cel['3,3'] === 'Beau')
+ok('alle uren met week en wie', uren.tabs[0].naam === 'Alle uren' && uren.tabs[0].cel['2,1'] === 45 && uren.tabs[0].cel['2,2'] === 'dinsdag' && uren.tabs[0].cel['2,4'] === 'Jan' && uren.tabs[0].cel['2,5'] === '' && uren.tabs[0].cel['3,5'] === 'Carin Bodewes' && uren.tabs[0].cel['2,6'] === 'Werk' && uren.tabs[0].cel['2,7'] === '07:30' && uren.tabs[0].cel['3,12'] === 'werkplaats' && uren.tabs[0].cel['5,6'] === 'Reistijd')
+ok('alle uren: km bij de eerste regel van de dag', uren.tabs[0].cel['2,11'] === 34 && uren.tabs[0].cel['5,11'] === '' && uren.tabs[0].cel['6,6'] === 'Kilometers' && uren.tabs[0].cel['6,11'] === 12)
+ok('per week opgeteld, nieuwste bovenaan', uren.tabs[1].naam === 'Per week' && uren.tabs[1].cel['2,2'] === 45 && uren.tabs[1].cel['2,4'] === 12 && uren.tabs[1].cel['2,5'] === 0.75 && uren.tabs[1].cel['2,6'] === 46 && uren.tabs[1].cel['3,2'] === 44 && uren.tabs[1].cel['3,3'] === 'Beau')
 ok('tabblad per medewerker op naam', uren.tabs.map((t) => t.naam).join('|') === 'Alle uren|Per week|Beau|Jan')
 const jan = uren.tabs[3]
-ok('jan: maandag voor dinsdag', jan.cel['2,2'] === 'maandag' && jan.cel['2,4'] === 'Carin Bodewes' && jan.cel['3,2'] === 'dinsdag' && jan.cel['3,5'] === 'Reistijd' && jan.cel['4,5'] === 'Werk' && jan.cel['2,9'] === 4)
-ok('jan: weektotaal vet, reistijd apart', jan.cel['5,1'] === 'Totaal week 45' && jan.cel['5,9'] === 12 && jan.vet.includes(5) && jan.cel['6,1'] === 'Reistijd week 45' && jan.cel['6,9'] === 0.75)
+ok('jan: maandag voor dinsdag', jan.cel['2,2'] === 'maandag' && jan.cel['2,4'] === 'Carin Bodewes' && jan.cel['3,2'] === 'dinsdag' && jan.cel['3,5'] === 'Reistijd' && jan.cel['4,5'] === 'Werk' && jan.cel['2,9'] === 4 && jan.cel['3,10'] === 34 && jan.cel['5,5'] === 'Kilometers' && jan.cel['5,10'] === 12)
+ok('jan: weektotaal vet, reistijd en km apart', jan.cel['6,1'] === 'Totaal week 45' && jan.cel['6,9'] === 12 && jan.cel['6,10'] === 46 && jan.vet.includes(6) && jan.cel['7,1'] === 'Reistijd week 45' && jan.cel['7,9'] === 0.75)
 // Tweede keer: niets dubbel, hernoemen werkt.
 db.klanten[0].naam = 'Carin Bodewes-Jansen'
 ctx.bijwerken()
