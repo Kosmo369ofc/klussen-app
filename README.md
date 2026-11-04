@@ -21,6 +21,8 @@ Werkt op telefoon en laptop; alles staat in één online database, dus het is ov
   Klokken op het startscherm: bij vertrek start je reistijd, bij de klant start je werk, en als je klaar bent
   ga je weer verder met reistijd; aan het eind tik je Dag klaar. Elk stuk komt vanzelf als regel in de week;
   reistijd telt apart van de werkuren. Het scherm Uren is voor achteraf invullen en aanpassen.
+  Kilometers: op het startscherm de kilometerstand van de bus bij begin en Dag klaar, of achteraf per dag
+  het aantal km in het weekoverzicht. De km staan ook in de download en het Drive-bestand.
   Iedereen vult alleen zijn eigen uren in; de beheerder bekijkt ieders week, keurt goed en kan per week
   een bestand downloaden (opent in Excel en Google Sheets). Het Drive-script zet alle uren ook in een apart
   bestand **Urenregistratie medewerkers** in de map Klussen-app
@@ -31,7 +33,7 @@ Nog niet: uren tegenover het contract en export naar Google Sheets.
 
 1. Maak een gratis project aan op [supabase.com](https://supabase.com).
 2. Open in Supabase de **SQL Editor**, plak de inhoud van `supabase/migrations/0001_basis.sql` en klik op **Run**.
-   Doe daarna hetzelfde met elk volgend bestand in die map, op volgorde (`0002_wensen.sql`, `0003_prijsopbouw.sql`, `0004_contractperiode.sql`, `0005_urenregistratie.sql`, `0006_uren_per_klant.sql`, `0007_inklokken.sql`, `0008_medewerker_wijzigen.sql`, `0009_reistijd_klokken.sql`, ...).
+   Doe daarna hetzelfde met elk volgend bestand in die map, op volgorde (`0002_wensen.sql`, `0003_prijsopbouw.sql`, `0004_contractperiode.sql`, `0005_urenregistratie.sql`, `0006_uren_per_klant.sql`, `0007_inklokken.sql`, `0008_medewerker_wijzigen.sql`, `0009_reistijd_klokken.sql`, `0010_kilometers.sql`, ...).
    Een bestand dat al is uitgevoerd, voer je niet nog een keer uit.
 3. Zet jezelf erin als eerste beheerder (in de SQL Editor):
    ```sql

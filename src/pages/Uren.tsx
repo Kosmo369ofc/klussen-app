@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { toonUren, vandaag } from '../lib/datum'
-import type { Medewerker, Werkuren } from '../lib/types'
+import type { Dagkilometers, Medewerker, Werkuren } from '../lib/types'
 import Busje from '../Busje'
 
 // Standaard bij het invullen van een dag.
@@ -93,10 +93,19 @@ function nieuweBegintijd(c: Concept, begintijd: string): Concept {
 }
 
 // Een apart bestand met de uren, dat Excel en Google Sheets goed openen.
-function urenNaarCsv(regels: Werkuren[], naam: (id: string) => string, klant: (id: string | null) => string): string {
+// Km staan per dag: in de kolom Km (dag) bij de eerste regel van die dag.
+function urenNaarCsv(regels: Werkuren[], naam: (id: string) => string, klant: (id: string | null) => string, km: Dagkilometers[] = []): string {
   const veld = (v: string) => (/[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+  const kmVan = new Map(km.filter((k) => k.km != null).map((k) => [`${k.medewerker_id}|${k.datum}`, k.km as number]))
+  const gehad = new Set<string>()
+  const kmBij = (r: { medewerker_id: string; datum: string }) => {
+    const sleutel = `${r.medewerker_id}|${r.datum}`
+    if (gehad.has(sleutel) || !kmVan.has(sleutel)) return ''
+    gehad.add(sleutel)
+    return String(kmVan.get(sleutel))
+  }
   const rijen = [
-    ['Week', 'Dag', 'Datum', 'Medewerker', 'Klant', 'Soort', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd'],
+    ['Week', 'Dag', 'Datum', 'Medewerker', 'Klant', 'Soort', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Km (dag)', 'Opmerking', 'Goedgekeurd'],
     ...regels.map((r) => [
       String(weeknummer(r.datum)[0]),
       dagnaam(r.datum),
@@ -108,10 +117,16 @@ function urenNaarCsv(regels: Werkuren[], naam: (id: string) => string, klant: (i
       tijd(r.eindtijd),
       String(r.pauze_minuten),
       getal(Number(r.uren)),
+      kmBij(r),
       r.opmerking ?? '',
       r.goedgekeurd ? 'ja' : 'nee',
     ]),
   ]
+  // Dagen met alleen kilometers en geen uren.
+  for (const k of km) {
+    if (k.km == null || gehad.has(`${k.medewerker_id}|${k.datum}`)) continue
+    rijen.push([String(weeknummer(k.datum)[0]), dagnaam(k.datum), k.datum.split('-').reverse().join('-'), naam(k.medewerker_id), '', 'Kilometers', '', '', '', '', String(k.km), '', ''])
+  }
   return '﻿' + rijen.map((rij) => rij.map(veld).join(';')).join('\r\n') + '\r\n'
 }
 
@@ -137,6 +152,9 @@ export default function Uren() {
   const [concepten, setConcepten] = useState<Record<string, Concept>>({})
   const [fout, setFout] = useState<Record<string, string>>({})
   const [bezig, setBezig] = useState('')
+  // Kilometers per dag. null: tabel bestaat nog niet (SQL nog niet gedraaid).
+  const [alleKm, setAlleKm] = useState<Dagkilometers[] | null>(null)
+  const [kmBewerk, setKmBewerk] = useState<Record<string, string>>({})
 
   const dagen = useMemo(() => weekdagen(rond), [rond])
   const [weeknr, jaar] = weeknummer(dagen[0])
@@ -168,6 +186,8 @@ export default function Uren() {
       .order('datum')
       .order('begintijd')
     const alles = (data as Werkuren[]) ?? []
+    const km = await supabase.from('dagkilometers').select('*').gte('datum', dagen[0]).lte('datum', dagen[6])
+    setAlleKm(km.error ? null : ((km.data as Dagkilometers[]) ?? []))
     setAlleRegels(alles)
     setRegels(alles.filter((r) => r.medewerker_id === persoon))
   }, [dagen, persoon])
@@ -283,11 +303,46 @@ export default function Uren() {
   }
 
   const open = (regels ?? []).filter((r) => !r.goedgekeurd).map((r) => r.id)
+
+  // Kilometers van wie je bekijkt, per dag.
+  const mijnKm = useMemo(() => (alleKm ?? []).filter((k) => k.medewerker_id === persoon), [alleKm, persoon])
+  const kmOpDag = useMemo(() => new Map(mijnKm.map((k) => [k.datum, k])), [mijnKm])
+  const weekKm = mijnKm.reduce((som, k) => som + (k.km ?? 0), 0)
+
+  async function kmOpslaan(dag: string) {
+    const tekst = (kmBewerk[dag] ?? '').replace(/\D/g, '')
+    const bestaand = kmOpDag.get(dag)
+    setBezig(`km:${dag}`)
+    const { error } =
+      tekst === '' && bestaand && bestaand.beginstand == null && bestaand.eindstand == null
+        ? await supabase.from('dagkilometers').delete().eq('medewerker_id', persoon).eq('datum', dag)
+        : await supabase.from('dagkilometers').upsert({ medewerker_id: persoon, datum: dag, km: tekst === '' ? null : Number(tekst) })
+    setBezig('')
+    if (error) {
+      setFout({ ...fout, [`km:${dag}`]: 'Opslaan lukte niet. Controleer je internet en probeer het opnieuw.' })
+      return
+    }
+    const rest = { ...kmBewerk }
+    delete rest[dag]
+    setKmBewerk(rest)
+    setFout({ ...fout, [`km:${dag}`]: '' })
+    void laad()
+  }
+
+  // Iedereen in de week (opmaak 2C): uren tegenover 40 uur, en de kilometers.
   const weekTotalen = useMemo(() => {
-    const per = new Map<string, number>()
-    for (const r of alleRegels.filter((x) => x.soort !== 'reis')) per.set(r.medewerker_id, (per.get(r.medewerker_id) ?? 0) + Number(r.uren))
+    const per = new Map<string, { uren: number; km: number }>()
+    for (const m of medewerkers.filter((x) => x.actief)) per.set(m.id, { uren: 0, km: 0 })
+    for (const r of alleRegels.filter((x) => x.soort !== 'reis')) {
+      const t = per.get(r.medewerker_id) ?? { uren: 0, km: 0 }
+      per.set(r.medewerker_id, { ...t, uren: t.uren + Number(r.uren) })
+    }
+    for (const k of alleKm ?? []) {
+      const t = per.get(k.medewerker_id) ?? { uren: 0, km: 0 }
+      per.set(k.medewerker_id, { ...t, km: t.km + (k.km ?? 0) })
+    }
     return [...per.entries()].sort((a, b) => naam(a[0]).localeCompare(naam(b[0])))
-  }, [alleRegels, naam])
+  }, [alleRegels, alleKm, medewerkers, naam])
 
   function formulier(sleutel: string, c: Concept, bestaand?: Werkuren) {
     const uren = berekend(c)
@@ -413,13 +468,44 @@ export default function Uren() {
                   ),
                 )}
 
+                {kmBewerk[dag] !== undefined ? (
+                  <div className="kmformulier">
+                    <label>
+                      Gereden km
+                      <input inputMode="numeric" autoFocus value={kmBewerk[dag]} placeholder="Bijv. 34" onChange={(e) => setKmBewerk({ ...kmBewerk, [dag]: e.target.value })} />
+                    </label>
+                    {kmOpDag.get(dag)?.beginstand != null && (
+                      <span className="klein">
+                        Stand {kmOpDag.get(dag)?.beginstand?.toLocaleString('nl-NL')} → {kmOpDag.get(dag)?.eindstand?.toLocaleString('nl-NL') ?? '…'}
+                      </span>
+                    )}
+                    {fout[`km:${dag}`] && <p className="fout">{fout[`km:${dag}`]}</p>}
+                    <div className="rij knoppen">
+                      <button disabled={bezig === `km:${dag}`} onClick={() => kmOpslaan(dag)}>{bezig === `km:${dag}` ? 'Bezig…' : 'Opslaan'}</button>
+                      <button className="knop-klein" onClick={() => { const rest = { ...kmBewerk }; delete rest[dag]; setKmBewerk(rest) }}>Annuleren</button>
+                    </div>
+                  </div>
+                ) : kmOpDag.get(dag)?.km != null ? (
+                  <div className="kmregel">
+                    <span><Busje breed={26} /> <strong>{kmOpDag.get(dag)?.km} km</strong> <span className="klein">gereden</span></span>
+                    {eigen && <button className="knop-klein" onClick={() => setKmBewerk({ ...kmBewerk, [dag]: String(kmOpDag.get(dag)?.km ?? '') })}>Wijzigen</button>}
+                  </div>
+                ) : null}
+
                 {concepten[nieuwSleutel] ? (
                   formulier(nieuwSleutel, concepten[nieuwSleutel])
                 ) : eigen ? (
-                  <button className="knop-invullen" onClick={() => nieuw(dag)}>
-                    {lijst.length ? '+ Nog een klant of tijdvak' : '+ Uren invullen'}
-                  </button>
-                ) : lijst.length === 0 ? (
+                  <div className="dagknoppen">
+                    <button className="knop-invullen" onClick={() => nieuw(dag)}>
+                      {lijst.length ? '+ Nog een klant of tijdvak' : '+ Uren invullen'}
+                    </button>
+                    {alleKm !== null && kmOpDag.get(dag)?.km == null && kmBewerk[dag] === undefined && (
+                      <button className="knop-invullen knop-km" onClick={() => setKmBewerk({ ...kmBewerk, [dag]: '' })} aria-label="Kilometers invullen">
+                        <Busje breed={24} /> + Km
+                      </button>
+                    )}
+                  </div>
+                ) : lijst.length === 0 && kmOpDag.get(dag)?.km == null ? (
                   <span className="klein">Niet ingevuld</span>
                 ) : null}
               </li>
@@ -438,6 +524,12 @@ export default function Uren() {
           <span>{toonUren(reistijd)}</span>
         </div>
       )}
+      {weekKm > 0 && (
+        <div className="controle rij knoppen reistotaal">
+          <span>Kilometers week {weeknr}</span>
+          <span>{weekKm.toLocaleString('nl-NL')} km</span>
+        </div>
+      )}
 
       <div className="weekacties">
         {isBeheerder && open.length > 0 && (
@@ -448,8 +540,8 @@ export default function Uren() {
         <button
           type="button"
           className={isBeheerder && open.length > 0 ? 'knop-zacht' : ''}
-          disabled={!regels?.length}
-          onClick={() => downloaden(`Uren week ${weeknr} ${jaar} ${naam(persoon)}.csv`, urenNaarCsv(regels ?? [], naam, klantNaam))}
+          disabled={!regels?.length && !mijnKm.length}
+          onClick={() => downloaden(`Uren week ${weeknr} ${jaar} ${naam(persoon)}.csv`, urenNaarCsv(regels ?? [], naam, klantNaam, mijnKm))}
         >
           ⤓ Week downloaden
         </button>
@@ -458,25 +550,30 @@ export default function Uren() {
       {isBeheerder && weekTotalen.length > 0 && (
         <>
           <h2>Iedereen in week {weeknr}</h2>
-          <table className="tabel">
-            <tbody>
-              {weekTotalen.map(([id, uren]) => (
-                <tr key={id}>
-                  <td><button className="link" onClick={() => setWie(id)}>{naam(id)}</button></td>
-                  <td>{toonUren(uren)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p>
+          <ul className="mensvakken">
+            {weekTotalen.map(([id, t]) => (
+              <li key={id}>
+                <button type="button" className={`mensvak${id === persoon ? ' gekozen' : ''}`} onClick={() => setWie(id)}>
+                  <span className="mensrij">
+                    <span className="avatar" aria-hidden>{naam(id).charAt(0).toUpperCase()}</span>
+                    <strong>{naam(id)}</strong>
+                    <strong className="mensuren">{getal(t.uren)} / 40 uur</strong>
+                  </span>
+                  <span className="voortgang"><i style={{ width: `${Math.min(100, (t.uren / 40) * 100)}%` }} /></span>
+                  {t.km > 0 && <span className="klein mens-km"><Busje breed={20} /> {t.km.toLocaleString('nl-NL')} km</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="weekacties">
             <button
               type="button"
-              className="knop-klein"
-              onClick={() => downloaden(`Uren week ${weeknr} ${jaar} iedereen.csv`, urenNaarCsv(alleRegels, naam, klantNaam))}
+              disabled={!alleRegels.length && !(alleKm ?? []).length}
+              onClick={() => downloaden(`Uren week ${weeknr} ${jaar} iedereen.csv`, urenNaarCsv(alleRegels, naam, klantNaam, alleKm ?? []))}
             >
-              Week van iedereen downloaden
+              ⤓ Week van iedereen downloaden
             </button>
-          </p>
+          </div>
         </>
       )}
     </main>

@@ -166,3 +166,12 @@ export interface Ingeklokt {
   pauze_minuten: number
   soort: 'werk' | 'reis'
 }
+
+// Gereden kilometers per medewerker per dag.
+export interface Dagkilometers {
+  medewerker_id: string
+  datum: string
+  beginstand: number | null
+  eindstand: number | null
+  km: number | null
+}
