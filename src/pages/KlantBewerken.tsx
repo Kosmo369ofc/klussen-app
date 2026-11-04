@@ -379,7 +379,7 @@ export default function KlantBewerken() {
 
   return (
     <main className="pagina">
-      <Link to={nieuw ? '/' : `/klanten/${id}`} className="terug">← Terug</Link>
+      <Link to={nieuw ? '/klanten' : `/klanten/${id}`} className="terug">← Terug</Link>
       <h1>{nieuw ? 'Nieuwe klant' : 'Klant bewerken'}</h1>
       <form onSubmit={opslaan} className="formulier">
         <label>

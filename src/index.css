@@ -172,6 +172,24 @@ button.knop-klok.uit { background: var(--rood); }
 .kloktijd { font-size: 1.8rem; font-weight: 700; color: var(--groen); font-variant-numeric: tabular-nums; }
 .klokpunt { display: inline-block; width: 10px; height: 10px; border-radius: 10px; background: #3f9a4a; margin-right: 8px; }
 .klokpunt.pauze { background: var(--zand); }
+.startdatum { margin: -8px 0 14px; }
+.klokof { text-align: center; margin-top: 4px; }
+.vandaagvak { background: var(--kaart); border: 1px solid var(--rand); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+.tijdlijn { list-style: none; margin: 10px 0 0 6px; padding: 0 0 0 14px; border-left: 3px solid var(--rand); display: flex; flex-direction: column; gap: 8px; }
+.tijdlijn li { position: relative; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tijdlijn li::before { content: ''; position: absolute; left: -22px; top: 6px; width: 11px; height: 11px; border-radius: 11px; background: var(--groen); }
+.tijdlijn li.reis::before { background: #141414; }
+.tijdlijn li.nu { font-weight: 700; }
+.tijdlijn .tijden { font-variant-numeric: tabular-nums; min-width: 7.2em; }
+.tijdlijn .looptijd { color: var(--groen); }
+button.knop-klok { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.buspil { display: inline-flex; background: white; border-radius: 99px; padding: 3px 8px; }
+.busje { display: inline-block; vertical-align: middle; flex: none; }
+.klokknoppen { justify-content: space-between; }
+button.knop-dagklaar { background: var(--rood); padding: 9px 18px; font-weight: 600; }
+.urenregel.reisregel .tijden { color: var(--olijf); }
+.reislabel { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; color: var(--tekst); }
+.reistotaal { color: var(--grijs); margin-top: -4px; }
 .weekacties { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 .weekacties button { width: 100%; padding: 12px; font-weight: 500; }
 .weekacties button.knop-zacht { background: var(--groen-zacht); color: var(--groen); }

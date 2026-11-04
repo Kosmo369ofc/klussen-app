@@ -248,6 +248,25 @@ await als(baas, 'baas@x.nl', async () => {
   ok('identiteit mee gewijzigd', i.identity_data.email === 'jan.nieuw@x.nl' && i.identity_data.sub === 'x')
 }
 
+// Migratie 0009: reistijd en werk apart klokken.
+await db.exec(fs.readFileSync(new URL('../migrations/0009_reistijd_klokken.sql', import.meta.url), 'utf8').replace(/notify pgrst.*$/m, ''))
+await db.exec('grant execute on all functions in schema public to authenticated')
+await als(jan, 'jan@x.nl', async () => {
+  await q(`delete from werkuren where datum = (now() at time zone 'Europe/Amsterdam')::date`)
+  await q(`select klok_wissel('reis')`)
+  ok('reistijd loopt', (await q('select soort from ingeklokt')).rows[0].soort === 'reis')
+})
+await q(`update ingeklokt set gestart_op = now() - interval '30 minutes'`)
+await als(jan, 'jan@x.nl', async () => {
+  await q(`select klok_wissel('werk', $1)`, [klant])
+  const regels = (await q(`select soort, klant_id from werkuren where datum = (now() at time zone 'Europe/Amsterdam')::date`)).rows
+  ok('aankomst zet reistijd in de uren', regels.length === 1 && regels[0].soort === 'reis')
+  const nu = (await q('select soort, klant_id from ingeklokt')).rows[0]
+  ok('werk bij klant loopt', nu.soort === 'werk' && nu.klant_id === klant)
+  await fout('verkeerde soort mag niet', () => q(`select klok_wissel('vakantie')`))
+  ok('na een fout loopt het werk nog', (await q('select soort from ingeklokt')).rows[0]?.soort === 'werk')
+})
+
 if (mislukt) {
   console.log(`${mislukt} test(s) mislukt`)
   process.exit(1)
