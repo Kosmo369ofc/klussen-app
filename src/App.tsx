@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
 import { isGeconfigureerd, supabase } from './lib/supabase'
 import { aantalInWachtrij, wachtrijVersturen } from './lib/wachtrij'
@@ -47,6 +47,60 @@ function useOpenBeurten(actief: boolean): number {
   return aantal
 }
 
+// Menu achter de knop met drie streepjes: grote tegels over het hele scherm.
+// Beau (beheerder) ziet ook Facturatie en Medewerkers.
+function Menu({ isBeheerder, naam, openBeurten, pathname, sluiten }: {
+  isBeheerder: boolean
+  naam: string
+  openBeurten: number
+  pathname: string
+  sluiten: () => void
+}) {
+  useEffect(() => {
+    const toets = (e: KeyboardEvent) => e.key === 'Escape' && sluiten()
+    window.addEventListener('keydown', toets)
+    document.body.classList.add('menu-open')
+    return () => {
+      window.removeEventListener('keydown', toets)
+      document.body.classList.remove('menu-open')
+    }
+  }, [sluiten])
+
+  const tegels = [
+    { naar: '/uren', icoon: '🕒', tekst: 'Uren invullen', actief: pathname.startsWith('/uren') },
+    { naar: '/', icoon: '🌿', tekst: 'Tuinonderhoud', actief: pathname === '/' || pathname.startsWith('/klanten') },
+    { naar: '/overzicht', icoon: '📋', tekst: 'Overzicht', actief: pathname.startsWith('/overzicht') },
+    ...(isBeheerder
+      ? [
+          { naar: '/facturatie', icoon: '💶', tekst: 'Facturatie', actief: pathname.startsWith('/facturatie'), teller: openBeurten, beheer: true },
+          { naar: '/medewerkers', icoon: '👥', tekst: 'Medewerkers', actief: pathname.startsWith('/medewerkers'), beheer: true },
+        ]
+      : []),
+  ]
+
+  return (
+    <nav className="menuscherm" aria-label="Menu">
+      <div className="tegels">
+        {tegels.map((t) => (
+          <Link
+            key={t.naar}
+            to={t.naar}
+            onClick={sluiten}
+            className={`tegel${t.actief ? ' actief' : ''}${'beheer' in t ? ' beheer' : ''}`}
+          >
+            <span className="tegel-icoon" aria-hidden>{t.icoon}</span>
+            {t.tekst}
+            {'teller' in t && (t.teller ?? 0) > 0 && <span className="teller">{t.teller}</span>}
+          </Link>
+        ))}
+      </div>
+      <button className="knop-uitloggen" onClick={() => supabase.auth.signOut()}>
+        Uitloggen ({naam})
+      </button>
+    </nav>
+  )
+}
+
 function moetWachtwoordKiezen(gebruiker: { user_metadata?: Record<string, unknown> }): boolean {
   if (!gebruiker.user_metadata?.wachtwoord_ingesteld) return true
   try {
@@ -72,6 +126,10 @@ function Schil() {
   const { laden, sessie, medewerker, isBeheerder, fout } = useAuth()
   const openBeurten = useOpenBeurten(isBeheerder)
   const { pathname } = useLocation()
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  // Menu dicht na het kiezen van een pagina.
+  useEffect(() => setMenuOpen(false), [pathname])
 
   if (laden) return <main className="pagina"><p>Laden…</p></main>
   if (fout) {
@@ -105,11 +163,30 @@ function Schil() {
   return (
     <>
       <header className="balk">
-        <NavLink to="/">
-          <img src={beeldmerk} alt="" />
-          <span>DARNEVIEL</span>
-        </NavLink>
+        <div className="balk-binnen">
+          <NavLink to="/" className="logo">
+            <img src={beeldmerk} alt="" />
+            <span>DARNEVIEL</span>
+          </NavLink>
+          <button
+            className={`menuknop${menuOpen ? ' open' : ''}`}
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label={menuOpen ? 'Menu sluiten' : 'Menu openen'}
+            aria-expanded={menuOpen}
+          >
+            <i /><i /><i />
+          </button>
+        </div>
       </header>
+      {menuOpen && (
+        <Menu
+          isBeheerder={isBeheerder}
+          naam={medewerker.naam}
+          openBeurten={openBeurten}
+          pathname={pathname}
+          sluiten={() => setMenuOpen(false)}
+        />
+      )}
       <Wachtrijbalk />
       <Foutvanger key={pathname}>
         <Routes>
@@ -125,20 +202,6 @@ function Schil() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Foutvanger>
-      <nav className="menu">
-        <NavLink to="/" end>Klanten</NavLink>
-        <NavLink to="/overzicht">Overzicht</NavLink>
-        <NavLink to="/uren">Uren</NavLink>
-        {isBeheerder && (
-          <NavLink to="/facturatie">
-            Facturatie{openBeurten > 0 && <span className="teller">{openBeurten}</span>}
-          </NavLink>
-        )}
-        {isBeheerder && <NavLink to="/medewerkers">Medewerkers</NavLink>}
-        <button className="link" onClick={() => supabase.auth.signOut()} title={`Uitloggen (${medewerker.naam})`}>
-          Uitloggen
-        </button>
-      </nav>
     </>
   )
 }
