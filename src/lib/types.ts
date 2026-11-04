@@ -154,3 +154,12 @@ export interface Werkuren {
   // Voor welke klant, voor de facturatie. Leeg: algemeen werk.
   klant_id: string | null
 }
+
+// Wie nu aan het werk is (in- en uitklokken).
+export interface Ingeklokt {
+  medewerker_id: string
+  gestart_op: string
+  klant_id: string | null
+  pauze_sinds: string | null
+  pauze_minuten: number
+}
