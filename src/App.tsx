@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/auth'
 import { isGeconfigureerd, supabase } from './lib/supabase'
@@ -68,27 +68,29 @@ function Menu({ isBeheerder, naam, openBeurten, pathname, sluiten }: {
   }, [sluiten])
 
   const tegels = [
-    { naar: '/', icoon: '⏱️', tekst: 'Klokken', actief: pathname === '/' },
+    { naar: '/', icoon: '🏠', tekst: 'Home', actief: pathname === '/', breed: true },
+    { naar: '/', icoon: '⏱️', tekst: 'Klokken', actief: false },
     { naar: '/uren', icoon: '🕒', tekst: 'Uren invullen', actief: pathname.startsWith('/uren') },
     { naar: '/klanten', icoon: '🌿', tekst: 'Tuinonderhoud', actief: pathname.startsWith('/klanten') },
-    { naar: '/overzicht', icoon: '📋', tekst: 'Overzicht', actief: pathname.startsWith('/overzicht') },
+    { naar: '/overzicht', icoon: '📋', tekst: 'Overzicht klanten', actief: pathname.startsWith('/overzicht') },
     ...(isBeheerder
       ? [
-          { naar: '/facturatie', icoon: '💶', tekst: 'Facturatie', actief: pathname.startsWith('/facturatie'), teller: openBeurten, beheer: true },
-          { naar: '/medewerkers', icoon: '👥', tekst: 'Medewerkers', actief: pathname.startsWith('/medewerkers'), beheer: true },
+          { naar: '/facturatie', icoon: '💶', tekst: 'Facturatie', actief: pathname.startsWith('/facturatie'), teller: openBeurten },
+          { naar: '/medewerkers', icoon: '👥', tekst: 'Medewerkers', actief: pathname.startsWith('/medewerkers') },
         ]
       : []),
   ]
 
   return (
     <nav className="menuscherm" aria-label="Menu">
-      <div className="tegels">
-        {tegels.map((t) => (
+      <div className={`tegels${isBeheerder ? ' drie' : ''}`}>
+        {tegels.map((t, n) => (
           <Link
-            key={t.naar}
+            key={t.tekst}
             to={t.naar}
             onClick={sluiten}
-            className={`tegel${t.actief ? ' actief' : ''}${'beheer' in t ? ' beheer' : ''}`}
+            className={`tegel${t.actief ? ' actief' : ''}${'breed' in t ? ' breed' : ''}`}
+            style={{ '--n': n } as CSSProperties}
           >
             <span className="tegel-icoon" aria-hidden>{t.icoon}</span>
             {t.tekst}
@@ -96,7 +98,7 @@ function Menu({ isBeheerder, naam, openBeurten, pathname, sluiten }: {
           </Link>
         ))}
       </div>
-      <button className="knop-uitloggen" onClick={() => supabase.auth.signOut()}>
+      <button className="knop-uitloggen" style={{ '--n': tegels.length } as CSSProperties} onClick={() => supabase.auth.signOut()}>
         Uitloggen ({naam})
       </button>
     </nav>
@@ -191,6 +193,7 @@ function Schil() {
       )}
       <Wachtrijbalk />
       <Foutvanger key={pathname}>
+        <div className="overgang">
         <Routes>
           <Route path="/" element={<Start />} />
           <Route path="/klanten" element={<Klanten />} />
@@ -204,6 +207,7 @@ function Schil() {
           <Route path="/uren" element={<Uren />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </div>
       </Foutvanger>
     </>
   )

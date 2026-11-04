@@ -243,13 +243,15 @@ body.menu-open { overflow: hidden; }
   padding: 78px 16px calc(24px + env(safe-area-inset-bottom));
 }
 .tegels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 560px; margin: 0 auto; }
-@media (min-width: 700px) { .tegels { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 700px) { .tegels.drie { grid-template-columns: repeat(3, 1fr); } }
 .tegel {
   position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
   min-height: 120px; padding: 16px 10px; background: var(--kaart); border: 1px solid var(--rand); border-radius: 12px;
   color: var(--groen); font-weight: 600; text-decoration: none; text-align: center;
 }
-.tegel.beheer { background: var(--groen-zacht); border-color: transparent; }
+/* Home bovenaan over de hele breedte */
+.tegel.breed { grid-column: 1 / -1; flex-direction: row; min-height: 64px; gap: 12px; }
+.tegel.breed .tegel-icoon { font-size: 1.6rem; }
 .tegel.actief { border: 2px solid var(--groen); }
 .tegel-icoon { font-size: 2rem; line-height: 1; }
 .tegel .teller { position: absolute; top: 8px; right: 8px; margin: 0; }
@@ -258,3 +260,13 @@ button.knop-uitloggen {
   background: #f6e3e1; color: var(--rood); font-weight: 600;
 }
 button.knop-uitloggen:hover { background: #efd3d0; }
+
+/* Animatie 1: menu vervaagt in, tegels komen een voor een omhoog; nieuw scherm vervaagt in */
+.menuscherm { animation: vervaagIn 0.25s ease both; }
+.menuscherm .tegel, .menuscherm .knop-uitloggen { animation: tegelOmhoog 0.3s ease both; animation-delay: calc(var(--n, 0) * 45ms); }
+.overgang { animation: vervaagIn 0.35s ease both; }
+@keyframes vervaagIn { from { opacity: 0; } }
+@keyframes tegelOmhoog { from { opacity: 0; transform: translateY(14px); } }
+@media (prefers-reduced-motion: reduce) {
+  .menuscherm, .menuscherm .tegel, .menuscherm .knop-uitloggen, .overgang { animation: none; }
+}
