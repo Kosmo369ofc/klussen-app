@@ -134,7 +134,7 @@ function schrijfUren(hoofdmap, uren, namen) {
   const blad = vindOfMaakBlad('blad:uren', hoofdmap, 'Urenregistratie medewerkers')
   const tabs = blad.getSheets()
   const alle = tabs[0]
-  const perWeek = tabs[1] || blad.insertSheet('Per week')
+  const perWeek = blad.getSheetByName('Per week') || tabs[1] || blad.insertSheet('Per week')
   const kop = ['Week', 'Dag', 'Datum', 'Medewerker', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
   const dagen = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
   const rijen = uren.map((u) => [
@@ -176,6 +176,93 @@ function schrijfUren(hoofdmap, uren, namen) {
   perWeek.getRange(1, 1, 1, weekKop.length).setValues([weekKop]).setFontWeight('bold')
   perWeek.setFrozenRows(1)
   if (weekRijen.length) perWeek.getRange(2, 1, weekRijen.length, weekKop.length).setValues(weekRijen)
+
+  // Een eigen tabblad per medewerker, met onder elke week het weektotaal.
+  const perMedewerker = {}
+  for (const u of uren) (perMedewerker[u.medewerker_id] = perMedewerker[u.medewerker_id] || []).push(u)
+  const ids = Object.keys(perMedewerker).sort((a, b) => (namen[a] || '?').localeCompare(namen[b] || '?'))
+  const gebruikt = { 'Alle uren': true, 'Per week': true }
+  for (const id of ids) {
+    const naam = tabNaam(namen[id] || '?', gebruikt)
+    const tab = vindOfMaakTab(blad, `tab:uren:${id}`, naam)
+    schrijfMedewerkerTab(tab, perMedewerker[id], dagen)
+  }
+}
+
+function schrijfMedewerkerTab(tab, uren, dagen) {
+  const kop = ['Week', 'Dag', 'Datum', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
+  const rijen = []
+  const vet = []
+  let huidig = null
+  let som = 0
+  const sluitWeek = () => {
+    if (huidig === null) return
+    rijen.push([`Totaal week ${huidig.split('|')[1]}`, '', '', '', '', '', Math.round(som * 100) / 100, '', ''])
+    vet.push(rijen.length + 1)
+    rijen.push(['', '', '', '', '', '', '', '', ''])
+  }
+  // Uren komen nieuwste eerst binnen: per week de dagen van maandag naar zondag.
+  const opWeek = {}
+  for (const u of uren) {
+    const sleutel = `${isoJaar(u.datum)}|${weeknummer(u.datum)}`
+    ;(opWeek[sleutel] = opWeek[sleutel] || []).push(u)
+  }
+  const weken = Object.keys(opWeek).sort((a, b) => {
+    const [ja, wa] = a.split('|').map(Number)
+    const [jb, wb] = b.split('|').map(Number)
+    return jb - ja || wb - wa
+  })
+  for (const w of weken) {
+    sluitWeek()
+    huidig = w
+    som = 0
+    const dagUren = opWeek[w].slice().sort((a, b) => (a.datum + a.begintijd).localeCompare(b.datum + b.begintijd))
+    for (const u of dagUren) {
+      rijen.push([
+        weeknummer(u.datum),
+        dagen[new Date(`${u.datum}T12:00:00`).getDay()],
+        new Date(`${u.datum}T12:00:00`),
+        String(u.begintijd).slice(0, 5),
+        String(u.eindtijd).slice(0, 5),
+        Number(u.pauze_minuten),
+        Number(u.uren),
+        u.opmerking || '',
+        u.goedgekeurd ? 'ja' : 'nee',
+      ])
+      som += Number(u.uren)
+    }
+  }
+  sluitWeek()
+  tab.clearContents()
+  tab.clearFormats()
+  tab.getRange(1, 1, 1, kop.length).setValues([kop]).setFontWeight('bold')
+  tab.setFrozenRows(1)
+  if (rijen.length) {
+    tab.getRange(2, 1, rijen.length, kop.length).setValues(rijen)
+    tab.getRange(2, 3, rijen.length, 1).setNumberFormat('dd-mm-yyyy')
+  }
+  for (const r of vet) tab.getRange(r, 1, 1, kop.length).setFontWeight('bold')
+}
+
+// Tabbladnamen mogen niet dubbel en niet langer dan 100 tekens zijn.
+function tabNaam(naam, gebruikt) {
+  const basis = naam.replace(/[\[\]*?:\/\\]+/g, '-').trim().slice(0, 90) || 'Naamloos'
+  let kandidaat = basis
+  for (let i = 2; gebruikt[kandidaat]; i++) kandidaat = `${basis} (${i})`
+  gebruikt[kandidaat] = true
+  return kandidaat
+}
+
+// Een tabblad wordt onthouden op zijn id, zodat een andere naam geen nieuw tabblad geeft.
+function vindOfMaakTab(blad, sleutel, naam) {
+  const id = eigenschappen().getProperty(sleutel)
+  let tab = id ? blad.getSheets().find((t) => String(t.getSheetId()) === id) : null
+  if (!tab) {
+    tab = blad.getSheetByName(naam) || blad.insertSheet(naam)
+    eigenschappen().setProperty(sleutel, String(tab.getSheetId()))
+  }
+  if (tab.getName() !== naam) tab.setName(naam)
+  return tab
 }
 
 // ISO-weeknummer (week begint op maandag), zoals in de agenda.

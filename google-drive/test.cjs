@@ -10,10 +10,11 @@ function folder(naam, ouder) { const f = { id: 'f' + ++nr, naam, ouder, trashed:
   getFilesByName: (n) => iter(f.files.filter((k) => k.naam === n)),
   createFile: (blob) => { const b = { id: 'b' + ++nr, naam: blob.naam }; f.files.push(b); return b } }; items[f.id] = f; return f }
 const root = folder('Mijn Drive')
-function sheet(naam) { const tab = { naam: 'Blad1', cel: {}, getRange: (r, c, h, w) => ({ setValues: (v) => { v.forEach((rij, i) => rij.forEach((x, j) => { tab.cel[`${r + i},${c + j}`] = x })); return { setFontWeight() {} } }, setNumberFormat() {} }),
-  clearContents: () => { tab.cel = {} }, setName: (n) => { tab.naam = n }, setFrozenRows() {} }
+function sheet(naam) { const tab = { naam: 'Blad1', cel: {}, vet: [], sid: ++nr, getSheetId: () => tab.sid, getName: () => tab.naam,
+  getRange: (r, c, h, w) => ({ setValues: (v) => { v.forEach((rij, i) => rij.forEach((x, j) => { tab.cel[`${r + i},${c + j}`] = x })); return { setFontWeight() {} } }, setNumberFormat() {}, setFontWeight: () => { tab.vet.push(r) } }),
+  clearContents: () => { tab.cel = {} }, clearFormats: () => { tab.vet = [] }, setName: (n) => { tab.naam = n }, setFrozenRows() {} }
   const tabs = [tab]
-  const s = { id: 's' + ++nr, naam, tab, tabs, map: root, getId: () => s.id, getName: () => s.naam, rename: (n) => { s.naam = n }, getSheets: () => tabs,
+  const s = { id: 's' + ++nr, naam, tab, tabs, map: root, getId: () => s.id, getName: () => s.naam, rename: (n) => { s.naam = n }, getSheets: () => tabs, getSheetByName: (n) => tabs.find((t) => t.naam === n) || null,
     insertSheet: (n) => { const t = sheet(n).tab; t.naam = n; tabs.push(t); return t } }
   items[s.id] = s; return s }
 const db = {
@@ -66,11 +67,18 @@ const uren = Object.values(items).find((x) => x.naam === 'Urenregistratie medewe
 ok('apart urenbestand in hoofdmap', uren && uren.map === hoofd)
 ok('alle uren met week en wie', uren.tabs[0].naam === 'Alle uren' && uren.tabs[0].cel['2,1'] === 45 && uren.tabs[0].cel['2,2'] === 'dinsdag' && uren.tabs[0].cel['2,4'] === 'Jan' && uren.tabs[0].cel['2,5'] === '07:30' && uren.tabs[0].cel['3,9'] === 'werkplaats')
 ok('per week opgeteld, nieuwste bovenaan', uren.tabs[1].naam === 'Per week' && uren.tabs[1].cel['2,2'] === 45 && uren.tabs[1].cel['2,4'] === 12 && uren.tabs[1].cel['3,2'] === 44 && uren.tabs[1].cel['3,3'] === 'Beau')
+ok('tabblad per medewerker op naam', uren.tabs.map((t) => t.naam).join('|') === 'Alle uren|Per week|Beau|Jan')
+const jan = uren.tabs[3]
+ok('jan: maandag voor dinsdag', jan.cel['2,2'] === 'maandag' && jan.cel['3,2'] === 'dinsdag' && jan.cel['2,7'] === 4)
+ok('jan: weektotaal vet', jan.cel['4,1'] === 'Totaal week 45' && jan.cel['4,7'] === 12 && jan.vet.includes(4))
 // Tweede keer: niets dubbel, hernoemen werkt.
 db.klanten[0].naam = 'Carin Bodewes-Jansen'
 ctx.bijwerken()
 ok('geen dubbele mappen', hoofd.kind.length === 2 && root.kind.length === 1)
-ok('urenbestand niet dubbel', Object.values(items).filter((x) => x.naam === 'Urenregistratie medewerkers').length === 1 && uren.tabs.length === 2)
+ok('urenbestand niet dubbel', Object.values(items).filter((x) => x.naam === 'Urenregistratie medewerkers').length === 1 && uren.tabs.length === 4)
+db.medewerkers[1].naam = 'Jan de Vries'
+ctx.bijwerken()
+ok('tabblad hernoemd, niet dubbel', uren.tabs.length === 4 && uren.tabs[3].naam === 'Jan de Vries')
 ok('map hernoemd', carin.naam === 'Carin Bodewes-Jansen' && blad.naam === 'Beurten Carin Bodewes-Jansen')
 ok('foto niet dubbel', fotomap.files.length === 1)
 // In een map in de gezamenlijke drive.
