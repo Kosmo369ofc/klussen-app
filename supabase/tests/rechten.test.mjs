@@ -1,11 +1,12 @@
 import { PGlite } from '@electric-sql/pglite'
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
 import fs from 'fs'
 
 // Test de database-opzet en de rechten zonder Supabase, met een nagebootst
 // auth-schema. Draai met: npm run test:db
 
 let mislukt = 0
-const db = new PGlite()
+const db = new PGlite({ extensions: { pgcrypto } })
 const q = (s, p) => db.query(s, p)
 await db.exec(`
 create schema auth; create schema storage;
@@ -214,6 +215,38 @@ await als(jan, 'jan@x.nl', async () => {
   const r = (await q('select * from uitklokken()')).rows[0]
   ok('vergeten uitklokken stopt om 23:59', r.eindtijd === '23:59:00')
 })
+// Migratie 0008: beheerder wijzigt e-mailadres en geeft tijdelijk wachtwoord.
+await db.exec(`
+create schema extensions; create extension pgcrypto schema extensions; create role anon;
+alter table auth.users add column encrypted_password text, add column raw_user_meta_data jsonb, add column updated_at timestamptz;
+create table auth.identities (user_id uuid, provider text, identity_data jsonb, updated_at timestamptz);
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-000000000009', 'los@x.nl');
+insert into auth.identities values ('${jan}', 'email', '{"email": "jan@x.nl", "sub": "x"}', null);
+`)
+await db.exec(fs.readFileSync(new URL('../migrations/0008_medewerker_wijzigen.sql', import.meta.url), 'utf8').replace(/notify pgrst.*$/m, ''))
+await db.exec(`grant execute on all functions in schema public to authenticated;`)
+const janId = (await q(`select id from medewerkers where email = 'jan@x.nl'`)).rows[0].id
+await als(jan, 'jan@x.nl', async () => {
+  await fout('medewerker mag geen e-mail wijzigen', () => q(`select medewerker_wijzigen($1, 'Jan', 'jan2@x.nl')`, [janId]))
+  await fout('medewerker mag geen wachtwoord geven', () => q(`select tijdelijk_wachtwoord($1, 'geheim123')`, [janId]))
+})
+await als(baas, 'baas@x.nl', async () => {
+  await fout('e-mail van ander account kan niet', () => q(`select medewerker_wijzigen($1, 'Jan', 'LOS@x.nl')`, [janId]))
+  await fout('e-mail van andere medewerker kan niet', () => q(`select medewerker_wijzigen($1, 'Jan', 'baas@x.nl')`, [janId]))
+  await fout('te kort wachtwoord kan niet', () => q(`select tijdelijk_wachtwoord($1, 'kort')`, [janId]))
+  await q(`select medewerker_wijzigen($1, ' Jan de Vries ', ' Jan.Nieuw@X.nl ')`, [janId])
+  await q(`select tijdelijk_wachtwoord($1, 'geheim123')`, [janId])
+})
+{
+  const m = (await q(`select naam, email, user_id from medewerkers where id = $1`, [janId])).rows[0]
+  ok('naam en e-mail gewijzigd', m.naam === 'Jan de Vries' && m.email === 'jan.nieuw@x.nl' && m.user_id === jan)
+  const u = (await q(`select email, raw_user_meta_data, encrypted_password = extensions.crypt('geheim123', encrypted_password) as klopt from auth.users where id = $1`, [jan])).rows[0]
+  ok('inlog-e-mail mee gewijzigd', u.email === 'jan.nieuw@x.nl')
+  ok('tijdelijk wachtwoord werkt', u.klopt === true)
+  ok('moet zelf nieuw wachtwoord kiezen', u.raw_user_meta_data.wachtwoord_ingesteld === false)
+  const i = (await q(`select identity_data from auth.identities where user_id = $1`, [jan])).rows[0]
+  ok('identiteit mee gewijzigd', i.identity_data.email === 'jan.nieuw@x.nl' && i.identity_data.sub === 'x')
+}
 
 if (mislukt) {
   console.log(`${mislukt} test(s) mislukt`)
