@@ -139,3 +139,16 @@ export function volgendeKeer(w: Schema, laatst: string | null): string | null {
   }
   return d.toISOString().slice(0, 10)
 }
+
+// Urenregistratie: per medewerker per werkdag, los van de klantbeurten.
+export interface Werkuren {
+  id: string
+  medewerker_id: string
+  datum: string
+  begintijd: string
+  eindtijd: string
+  pauze_minuten: number
+  uren: number
+  opmerking: string | null
+  goedgekeurd: boolean
+}

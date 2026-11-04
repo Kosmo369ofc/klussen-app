@@ -16,13 +16,18 @@ Werkt op telefoon en laptop; alles staat in één online database, dus het is ov
 - Voor de beheerder: klanten met contactpersoon, prijsafspraken, contractgegevens en contract als bestand;
   facturatie-overzicht met per beurt gefactureerd ja of nee; medewerkers beheren
 
+- Urenregistratie voor medewerkers, los van de klantbeurten: per werkdag begin, eind en pauze.
+  Medewerkers zien alleen hun eigen uren; de beheerder ziet iedereen, keurt goed en kan per week of maand
+  een bestand downloaden (opent in Excel en Google Sheets). Het Drive-script zet alle uren ook in een apart
+  bestand **Urenregistratie medewerkers** in de map Klussen-app
+
 Nog niet: uren tegenover het contract en export naar Google Sheets.
 
 ## Eenmalig instellen
 
 1. Maak een gratis project aan op [supabase.com](https://supabase.com).
 2. Open in Supabase de **SQL Editor**, plak de inhoud van `supabase/migrations/0001_basis.sql` en klik op **Run**.
-   Doe daarna hetzelfde met elk volgend bestand in die map, op volgorde (`0002_wensen.sql`, `0003_prijsopbouw.sql`, `0004_contractperiode.sql`, ...).
+   Doe daarna hetzelfde met elk volgend bestand in die map, op volgorde (`0002_wensen.sql`, `0003_prijsopbouw.sql`, `0004_contractperiode.sql`, `0005_urenregistratie.sql`, ...).
    Een bestand dat al is uitgevoerd, voer je niet nog een keer uit.
 3. Zet jezelf erin als eerste beheerder (in de SQL Editor):
    ```sql

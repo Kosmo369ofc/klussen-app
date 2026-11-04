@@ -144,3 +144,8 @@ input[type='search'] { margin-bottom: 8px; }
 .balk span { letter-spacing: 0.3em; font-weight: 600; font-size: 0.95rem; }
 .inlogscherm { text-align: center; margin-bottom: 12px; }
 .inlogscherm img { width: 100%; max-width: 260px; height: auto; }
+.urenformulier { background: var(--kaart); border: 1px solid var(--rand); border-radius: 10px; padding: 12px 14px; }
+.urenformulier h2 { margin-top: 0; }
+.urenbalk { margin-bottom: 8px; }
+.nowrap { white-space: nowrap; }
+@media (max-width: 600px) { .verberg-smal { display: none; } }

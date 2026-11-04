@@ -149,6 +149,34 @@ await als(baas, 'baas@x.nl', async () => {
   ok('contract in beurten', (await q('select contract_beurten from contracten')).rows[0].contract_beurten === 2)
 })
 
+// Migratie 0005: urenregistratie.
+await db.exec(fs.readFileSync(new URL('../migrations/0005_urenregistratie.sql', import.meta.url), 'utf8'))
+await db.exec(`grant all on all tables in schema public to authenticated;`)
+const dag = '44444444-4444-4444-4444-444444444444'
+await als(jan, 'jan@x.nl', async () => {
+  await q(`insert into werkuren (id, datum, begintijd, eindtijd, pauze_minuten) values ($1, '2026-11-02', '07:30', '16:00', 30)`, [dag])
+  ok('jan schrijft uren, 8 uur na pauze', Number((await q('select uren from werkuren')).rows[0].uren) === 8)
+  await fout('eindtijd voor begintijd mag niet', () => q(`insert into werkuren (begintijd, eindtijd) values ('16:00', '08:00')`))
+  await fout('jan kan geen uren voor een ander schrijven', () => q(`insert into werkuren (medewerker_id, begintijd, eindtijd) select id, '08:00', '12:00' from medewerkers where naam = 'Baas'`))
+  await fout('jan kan niet zelf goedkeuren', () => q(`update werkuren set goedgekeurd = true where id = $1`, [dag]))
+  await q(`update werkuren set opmerking = 'regen' where id = $1`, [dag])
+  ok('jan wijzigt eigen uren', (await q('select opmerking from werkuren')).rows[0].opmerking === 'regen')
+})
+await als(baas, 'baas@x.nl', async () => {
+  await q(`insert into werkuren (begintijd, eindtijd) values ('08:00', '12:00')`)
+  ok('beheerder ziet alle uren', (await q('select * from werkuren')).rows.length === 2)
+  await q(`update werkuren set goedgekeurd = true where id = $1`, [dag])
+})
+await als(jan, 'jan@x.nl', async () => {
+  ok('jan ziet alleen eigen uren', (await q('select * from werkuren')).rows.length === 1)
+  await q(`update werkuren set opmerking = 'later' where id = $1`, [dag])
+  await q(`delete from werkuren where id = $1`, [dag])
+  ok('goedgekeurde uren blijven staan', (await q('select opmerking from werkuren')).rows[0]?.opmerking === 'regen')
+})
+await als(vreemd, 'vreemd@x.nl', async () => {
+  ok('ander ziet geen uren van jan', (await q('select * from werkuren')).rows.length === 0)
+})
+
 if (mislukt) {
   console.log(`${mislukt} test(s) mislukt`)
   process.exit(1)
