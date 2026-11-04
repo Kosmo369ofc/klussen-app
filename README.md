@@ -30,7 +30,7 @@ Nog niet: uren tegenover het contract en export naar Google Sheets.
 
 1. Maak een gratis project aan op [supabase.com](https://supabase.com).
 2. Open in Supabase de **SQL Editor**, plak de inhoud van `supabase/migrations/0001_basis.sql` en klik op **Run**.
-   Doe daarna hetzelfde met elk volgend bestand in die map, op volgorde (`0002_wensen.sql`, `0003_prijsopbouw.sql`, `0004_contractperiode.sql`, `0005_urenregistratie.sql`, `0006_uren_per_klant.sql`, `0007_inklokken.sql`, ...).
+   Doe daarna hetzelfde met elk volgend bestand in die map, op volgorde (`0002_wensen.sql`, `0003_prijsopbouw.sql`, `0004_contractperiode.sql`, `0005_urenregistratie.sql`, `0006_uren_per_klant.sql`, `0007_inklokken.sql`, `0008_medewerker_wijzigen.sql`, ...).
    Een bestand dat al is uitgevoerd, voer je niet nog een keer uit.
 3. Zet jezelf erin als eerste beheerder (in de SQL Editor):
    ```sql

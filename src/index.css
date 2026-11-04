@@ -183,3 +183,15 @@ button.knop-klok.uit { background: var(--rood); }
 .weekacties { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
 .weekacties button { width: 100%; padding: 12px; font-weight: 500; }
 .weekacties button.knop-zacht { background: var(--groen-zacht); color: var(--groen); }
+/* Medewerkers: kaarten (optie B) */
+.medewerkerkaart { background: var(--kaart); border: 1px solid var(--rand); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.medewerkerkaart.open { flex-direction: column; align-items: stretch; gap: 12px; }
+.medewerkerkaart .naam { font-weight: 600; }
+.medewerkerkaart .klein { overflow-wrap: anywhere; }
+.wachtwoordvak { border-top: 1px solid var(--rand); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.wachtwoordvak p { margin: 0; }
+.knoprij { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.knoprij .opvuller { flex: 1; }
+.medewerkerkaart.open > .knoprij button { padding: 10px 18px; font-size: 16px; }
+button.knop-klein.knop-rood { background: #f6e1df; color: var(--rood); }
+button.knop-klein.knop-rood:hover { background: #efd0cd; }
