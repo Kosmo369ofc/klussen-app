@@ -11,6 +11,7 @@ import NieuwBezoek from './pages/NieuwBezoek'
 import Medewerkers from './pages/Medewerkers'
 import Overzicht from './pages/Overzicht'
 import Facturatie from './pages/Facturatie'
+import Uren from './pages/Uren'
 import Foutvanger from './Foutvanger'
 import beeldmerk from './assets/beeldmerk.svg'
 
@@ -120,12 +121,14 @@ function Schil() {
           {isBeheerder && <Route path="/medewerkers" element={<Medewerkers />} />}
           {isBeheerder && <Route path="/facturatie" element={<Facturatie />} />}
           <Route path="/overzicht" element={<Overzicht />} />
+          <Route path="/uren" element={<Uren />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Foutvanger>
       <nav className="menu">
         <NavLink to="/" end>Klanten</NavLink>
         <NavLink to="/overzicht">Overzicht</NavLink>
+        <NavLink to="/uren">Uren</NavLink>
         {isBeheerder && (
           <NavLink to="/facturatie">
             Facturatie{openBeurten > 0 && <span className="teller">{openBeurten}</span>}

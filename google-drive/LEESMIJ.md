@@ -4,6 +4,7 @@ Dit script zet de beurten uit de app in Google Drive:
 
 ```
 Klussen-app/
+  Urenregistratie medewerkers   (spreadsheet: tabblad "Alle uren" en tabblad "Per week")
   Carin Bodewes/
     Beurten Carin Bodewes   (spreadsheet: datum, werk, uren, wie, opmerkingen, foto's, gefactureerd)
     Foto's/                 (de foto's van de beurten)
@@ -47,6 +48,9 @@ gezamenlijke drive, zodat iedereen die daar toegang heeft hem ziet.
    `bijwerken` elk uur draait.
 
 ## Goed om te weten
+
+- Nieuwe versie van `Code.gs`? Plak hem opnieuw in het script (alles vervangen) en vul `INSTELLINGEN`
+  weer in zoals eerst. De rest (wachtwoord, trigger) blijft staan.
 
 - Wil je meteen bijwerken? Kies de functie **bijwerken** en klik op **Uitvoeren**.
 - Wordt het wachtwoord in de app veranderd, pas dan ook `WACHTWOORD` in de scripteigenschappen aan.

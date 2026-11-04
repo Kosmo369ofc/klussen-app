@@ -63,6 +63,15 @@ function bijwerken() {
     }
   }
 
+  // Zonder 0005_urenregistratie.sql in Supabase is er nog geen urentabel: dan alleen de beurten.
+  let uren = null
+  try {
+    uren = haalAlles(token, 'werkuren?select=*&order=datum.desc,begintijd')
+  } catch (e) {
+    console.warn(`Urenregistratie overgeslagen: ${e.message}`)
+  }
+  if (uren) schrijfUren(hoofdmap, uren, namen)
+
   let nieuw = 0
   let overgeslagen = 0
   for (const t of fotoTaken) {
@@ -118,6 +127,67 @@ function schrijfBeurten(klant, map, fotomap, bezoeken, namen, eenheden) {
     tab.getRange(2, 1, rijen.length, 1).setNumberFormat('dd-mm-yyyy')
   }
   if (blad.getName() !== `Beurten ${klant.naam}`) blad.rename(`Beurten ${klant.naam}`)
+}
+
+// Urenregistratie staat in een eigen spreadsheet, los van de klantmappen.
+function schrijfUren(hoofdmap, uren, namen) {
+  const blad = vindOfMaakBlad('blad:uren', hoofdmap, 'Urenregistratie medewerkers')
+  const tabs = blad.getSheets()
+  const alle = tabs[0]
+  const perWeek = tabs[1] || blad.insertSheet('Per week')
+  const kop = ['Datum', 'Week', 'Medewerker', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
+  const rijen = uren.map((u) => [
+    new Date(`${u.datum}T12:00:00`),
+    weeknummer(u.datum),
+    namen[u.medewerker_id] || '?',
+    String(u.begintijd).slice(0, 5),
+    String(u.eindtijd).slice(0, 5),
+    Number(u.pauze_minuten),
+    Number(u.uren),
+    u.opmerking || '',
+    u.goedgekeurd ? 'ja' : 'nee',
+  ])
+  alle.clearContents()
+  alle.setName('Alle uren')
+  alle.getRange(1, 1, 1, kop.length).setValues([kop]).setFontWeight('bold')
+  alle.setFrozenRows(1)
+  if (rijen.length) {
+    alle.getRange(2, 1, rijen.length, kop.length).setValues(rijen)
+    alle.getRange(2, 1, rijen.length, 1).setNumberFormat('dd-mm-yyyy')
+  }
+
+  // Totaal per medewerker per week, nieuwste week bovenaan.
+  const totaal = {}
+  for (const u of uren) {
+    const jaar = isoJaar(u.datum)
+    const sleutel = `${jaar}|${String(weeknummer(u.datum)).padStart(2, '0')}|${namen[u.medewerker_id] || '?'}`
+    totaal[sleutel] = (totaal[sleutel] || 0) + Number(u.uren)
+  }
+  const weekRijen = Object.keys(totaal)
+    .sort((a, b) => (a.slice(0, 7) === b.slice(0, 7) ? a.localeCompare(b) : b.localeCompare(a)))
+    .map((k) => {
+      const [jaar, week, naam] = k.split('|')
+      return [Number(jaar), Number(week), naam, Math.round(totaal[k] * 100) / 100]
+    })
+  const weekKop = ['Jaar', 'Week', 'Medewerker', 'Uren']
+  perWeek.clearContents()
+  perWeek.getRange(1, 1, 1, weekKop.length).setValues([weekKop]).setFontWeight('bold')
+  perWeek.setFrozenRows(1)
+  if (weekRijen.length) perWeek.getRange(2, 1, weekRijen.length, weekKop.length).setValues(weekRijen)
+}
+
+// ISO-weeknummer (week begint op maandag), zoals in de agenda.
+function weeknummer(datum) {
+  const d = new Date(`${datum}T12:00:00`)
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
+  const week1 = new Date(d.getFullYear(), 0, 4, 12)
+  return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
+}
+
+function isoJaar(datum) {
+  const d = new Date(`${datum}T12:00:00`)
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
+  return d.getFullYear()
 }
 
 // Mappen en bladen worden onthouden op hun id, zodat een andere klantnaam

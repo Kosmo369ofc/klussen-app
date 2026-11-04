@@ -12,11 +12,18 @@ function folder(naam, ouder) { const f = { id: 'f' + ++nr, naam, ouder, trashed:
 const root = folder('Mijn Drive')
 function sheet(naam) { const tab = { naam: 'Blad1', cel: {}, getRange: (r, c, h, w) => ({ setValues: (v) => { v.forEach((rij, i) => rij.forEach((x, j) => { tab.cel[`${r + i},${c + j}`] = x })); return { setFontWeight() {} } }, setNumberFormat() {} }),
   clearContents: () => { tab.cel = {} }, setName: (n) => { tab.naam = n }, setFrozenRows() {} }
-  const s = { id: 's' + ++nr, naam, tab, map: root, getId: () => s.id, getName: () => s.naam, rename: (n) => { s.naam = n }, getSheets: () => [tab] }
+  const tabs = [tab]
+  const s = { id: 's' + ++nr, naam, tab, tabs, map: root, getId: () => s.id, getName: () => s.naam, rename: (n) => { s.naam = n }, getSheets: () => tabs,
+    insertSheet: (n) => { const t = sheet(n).tab; t.naam = n; tabs.push(t); return t } }
   items[s.id] = s; return s }
 const db = {
   klanten: [{ id: 'k1', naam: 'Carin Bodewes', actief: true }, { id: 'k2', naam: 'Fam/Bakker', actief: true }, { id: 'k3', naam: 'Oud', actief: false }],
-  medewerkers: [{ id: 'm1', naam: 'Beau' }],
+  medewerkers: [{ id: 'm1', naam: 'Beau' }, { id: 'm2', naam: 'Jan' }],
+  werkuren: [
+    { id: 'u1', medewerker_id: 'm2', datum: '2026-11-03', begintijd: '07:30:00', eindtijd: '16:00:00', pauze_minuten: 30, uren: 8, opmerking: null, goedgekeurd: true },
+    { id: 'u2', medewerker_id: 'm2', datum: '2026-11-02', begintijd: '08:00:00', eindtijd: '12:00:00', pauze_minuten: 0, uren: 4, opmerking: 'werkplaats', goedgekeurd: false },
+    { id: 'u3', medewerker_id: 'm1', datum: '2026-10-28', begintijd: '08:00:00', eindtijd: '17:00:00', pauze_minuten: 60, uren: 8, opmerking: null, goedgekeurd: false },
+  ],
   werkzaamheden: [{ id: 'w1', meeteenheid: 'm³' }],
   bezoeken: [{ id: 'b1', klant_id: 'k1', datum: '2026-10-07', opmerkingen: 'nat', gefactureerd: true, bezoek_uren: [{ medewerker_id: 'm1', uren: 2.5 }], bezoekregels: [{ omschrijving: 'Gras', hoeveelheid: null, werkzaamheid_id: null }, { omschrijving: 'Groenafval', hoeveelheid: 3, werkzaamheid_id: 'w1' }], bezoek_fotos: [{ id: 'p1', pad: 'b1/a.jpg' }] }],
 }
@@ -55,10 +62,15 @@ ok('gefactureerd', blad.tab.cel['2,7'] === 'ja')
 ok('foto link', /HYPERLINK\(".*", "1 foto"\)/.test(blad.tab.cel['2,6']))
 const fotomap = carin.kind.find((k) => k.naam === "Foto's")
 ok('foto gekopieerd', fotomap.files.length === 1 && fotomap.files[0].naam === '2026-10-07 a.jpg')
+const uren = Object.values(items).find((x) => x.naam === 'Urenregistratie medewerkers')
+ok('apart urenbestand in hoofdmap', uren && uren.map === hoofd)
+ok('alle uren met week en wie', uren.tabs[0].naam === 'Alle uren' && uren.tabs[0].cel['2,2'] === 45 && uren.tabs[0].cel['2,3'] === 'Jan' && uren.tabs[0].cel['2,4'] === '07:30' && uren.tabs[0].cel['3,8'] === 'werkplaats')
+ok('per week opgeteld, nieuwste bovenaan', uren.tabs[1].naam === 'Per week' && uren.tabs[1].cel['2,2'] === 45 && uren.tabs[1].cel['2,4'] === 12 && uren.tabs[1].cel['3,2'] === 44 && uren.tabs[1].cel['3,3'] === 'Beau')
 // Tweede keer: niets dubbel, hernoemen werkt.
 db.klanten[0].naam = 'Carin Bodewes-Jansen'
 ctx.bijwerken()
 ok('geen dubbele mappen', hoofd.kind.length === 2 && root.kind.length === 1)
+ok('urenbestand niet dubbel', Object.values(items).filter((x) => x.naam === 'Urenregistratie medewerkers').length === 1 && uren.tabs.length === 2)
 ok('map hernoemd', carin.naam === 'Carin Bodewes-Jansen' && blad.naam === 'Beurten Carin Bodewes-Jansen')
 ok('foto niet dubbel', fotomap.files.length === 1)
 // In een map in de gezamenlijke drive.
