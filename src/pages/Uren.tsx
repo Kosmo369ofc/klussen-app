@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { toonUren, vandaag } from '../lib/datum'
-import type { Ingeklokt, Medewerker, Werkuren } from '../lib/types'
+import type { Medewerker, Werkuren } from '../lib/types'
+import Busje from '../Busje'
 
 // Standaard bij het invullen van een dag.
 const BEGIN = '07:00'
@@ -70,6 +71,7 @@ interface Concept {
   pauze: string
   opmerking: string
   klant_id: string
+  soort: 'werk' | 'reis'
 }
 
 function berekend(c: Concept): number | null {
@@ -94,13 +96,14 @@ function nieuweBegintijd(c: Concept, begintijd: string): Concept {
 function urenNaarCsv(regels: Werkuren[], naam: (id: string) => string, klant: (id: string | null) => string): string {
   const veld = (v: string) => (/[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
   const rijen = [
-    ['Week', 'Dag', 'Datum', 'Medewerker', 'Klant', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd'],
+    ['Week', 'Dag', 'Datum', 'Medewerker', 'Klant', 'Soort', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd'],
     ...regels.map((r) => [
       String(weeknummer(r.datum)[0]),
       dagnaam(r.datum),
       r.datum.split('-').reverse().join('-'),
       naam(r.medewerker_id),
       klant(r.klant_id),
+      r.soort === 'reis' ? 'Reistijd' : 'Werk',
       tijd(r.begintijd),
       tijd(r.eindtijd),
       String(r.pauze_minuten),
@@ -119,111 +122,6 @@ function downloaden(bestandsnaam: string, inhoud: string) {
   a.download = bestandsnaam
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-const kloktijd = (d: Date) => d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
-const groet = () => {
-  const u = new Date().getHours()
-  return u < 12 ? 'Goedemorgen' : u < 18 ? 'Goedemiddag' : 'Goedenavond'
-}
-
-// Groot klokvak boven het weekoverzicht (opmaak 3A): inklokken aan het begin van
-// de dag, uitklokken aan het eind. Bij uitklokken komt de regel in werkuren.
-function Klokvak({ klanten, klantNaam, klaar }: { klanten: KlantKort[]; klantNaam: (id: string | null) => string; klaar: (datum: string) => void }) {
-  const [klok, setKlok] = useState<Ingeklokt | null | undefined>(undefined)
-  const [klant, setKlant] = useState('')
-  const [nu, setNu] = useState(() => Date.now())
-  const [bezig, setBezig] = useState(false)
-  const [fout, setFout] = useState('')
-
-  const laad = useCallback(async () => {
-    const { data, error } = await supabase.from('ingeklokt').select('*').maybeSingle()
-    // Bestaat de tabel nog niet (SQL nog niet gedraaid), dan geen klokvak.
-    setKlok(error ? undefined : ((data as Ingeklokt | null) ?? null))
-  }, [])
-
-  useEffect(() => {
-    void laad()
-  }, [laad])
-
-  useEffect(() => {
-    if (!klok) return
-    const t = setInterval(() => setNu(Date.now()), 15000)
-    return () => clearInterval(t)
-  }, [klok])
-
-  async function doe(actie: () => PromiseLike<{ error: unknown }>, melding: string) {
-    setBezig(true)
-    setFout('')
-    const { error } = await actie()
-    setBezig(false)
-    if (error) setFout(melding)
-    setNu(Date.now())
-    await laad()
-  }
-
-  if (klok === undefined) return null
-
-  if (klok === null) {
-    return (
-      <section className="klokvak">
-        <strong>{groet()}</strong>
-        <span className="klein">Je bent nog niet ingeklokt.</span>
-        {klanten.length > 0 && (
-          <select value={klant} onChange={(e) => setKlant(e.target.value)} aria-label="Klant">
-            <option value="">Geen klant (algemeen werk)</option>
-            {klanten.map((k) => <option key={k.id} value={k.id}>{k.naam}</option>)}
-          </select>
-        )}
-        {fout && <p className="fout">{fout}</p>}
-        <button className="knop-klok" disabled={bezig} onClick={() => doe(() => supabase.from('ingeklokt').insert({ klant_id: klant || null }), 'Inklokken lukte niet. Controleer je internet en probeer het opnieuw.')}>
-          ▶ Inklokken
-        </button>
-      </section>
-    )
-  }
-
-  const start = new Date(klok.gestart_op)
-  const pauze = klok.pauze_minuten * 60000 + (klok.pauze_sinds ? nu - new Date(klok.pauze_sinds).getTime() : 0)
-  const gewerkt = Math.max(0, Math.floor((nu - start.getTime() - pauze) / 60000))
-  const andereDag = iso(start) !== vandaag()
-
-  async function uitklokken() {
-    setBezig(true)
-    setFout('')
-    const { data, error } = await supabase.rpc('uitklokken')
-    setBezig(false)
-    if (error) {
-      setFout('Uitklokken lukte niet. Controleer je internet en probeer het opnieuw.')
-      return
-    }
-    setKlok(null)
-    setKlant('')
-    klaar((data as Werkuren | null)?.datum ?? vandaag())
-  }
-
-  return (
-    <section className="klokvak bezig">
-      <div className="dagkop">
-        <div>
-          <strong><span className={`klokpunt${klok.pauze_sinds ? ' pauze' : ''}`} />{klok.pauze_sinds ? `Pauze sinds ${kloktijd(new Date(klok.pauze_sinds))}` : `Ingeklokt sinds ${kloktijd(start)}`}</strong>
-          <div className="klein">
-            {andereDag && `Op ${datumKort(iso(start))} · `}
-            {klok.klant_id ? `Klant: ${klantNaam(klok.klant_id)}` : 'Algemeen werk'}
-          </div>
-        </div>
-        <span className="kloktijd">{Math.floor(gewerkt / 60)}:{String(gewerkt % 60).padStart(2, '0')}</span>
-      </div>
-      {andereDag && <p className="fout">Je bent vergeten uit te klokken. Na uitklokken staat de regel tot 23:59; pas de eindtijd daarna aan.</p>}
-      {fout && <p className="fout">{fout}</p>}
-      <div className="klokknoppen">
-        <button className="knop-klein" disabled={bezig} onClick={() => doe(() => supabase.rpc('pauze_wisselen'), 'Dat lukte niet. Probeer het opnieuw.')}>
-          {klok.pauze_sinds ? '▶ Verder werken' : '☕ Pauze'}
-        </button>
-        <button className="knop-klok uit" disabled={bezig} onClick={uitklokken}>■ Uitklokken</button>
-      </div>
-    </section>
-  )
 }
 
 export default function Uren() {
@@ -292,7 +190,9 @@ export default function Uren() {
     return m
   }, [regels])
 
-  const totaal = (regels ?? []).reduce((som, r) => som + Number(r.uren), 0)
+  const isReis = (r: Werkuren) => r.soort === 'reis'
+  const totaal = (regels ?? []).filter((r) => !isReis(r)).reduce((som, r) => som + Number(r.uren), 0)
+  const reistijd = (regels ?? []).filter(isReis).reduce((som, r) => som + Number(r.uren), 0)
 
   function nieuw(dag: string) {
     const bestaand = perDag.get(dag) ?? []
@@ -306,6 +206,7 @@ export default function Uren() {
       pauze: String(laatste ? 0 : PAUZE),
       opmerking: '',
       klant_id: laatste?.klant_id ?? '',
+      soort: 'werk',
     }
     setConcepten({ ...concepten, [`nieuw:${dag}`]: nieuweBegintijd(basis, begin) })
   }
@@ -321,6 +222,7 @@ export default function Uren() {
         pauze: String(r.pauze_minuten),
         opmerking: r.opmerking ?? '',
         klant_id: r.klant_id ?? '',
+        soort: r.soort === 'reis' ? 'reis' : 'werk',
       },
     })
   }
@@ -355,6 +257,8 @@ export default function Uren() {
       pauze_minuten: Math.max(0, Math.round(Number(c.pauze) || 0)),
       opmerking: c.opmerking.trim() || null,
       klant_id: c.klant_id || null,
+      // Soort alleen meesturen als de database die al kent (na 0009).
+      ...(c.soort === 'reis' || regels?.some((r) => r.id === c.id && r.soort !== undefined) ? { soort: c.soort } : {}),
     })
     setBezig('')
     if (error) {
@@ -381,7 +285,7 @@ export default function Uren() {
   const open = (regels ?? []).filter((r) => !r.goedgekeurd).map((r) => r.id)
   const weekTotalen = useMemo(() => {
     const per = new Map<string, number>()
-    for (const r of alleRegels) per.set(r.medewerker_id, (per.get(r.medewerker_id) ?? 0) + Number(r.uren))
+    for (const r of alleRegels.filter((x) => x.soort !== 'reis')) per.set(r.medewerker_id, (per.get(r.medewerker_id) ?? 0) + Number(r.uren))
     return [...per.entries()].sort((a, b) => naam(a[0]).localeCompare(naam(b[0])))
   }, [alleRegels, naam])
 
@@ -395,6 +299,13 @@ export default function Uren() {
           <label>Pauze (min)<input type="number" inputMode="numeric" min="0" step="5" value={c.pauze} onChange={(e) => zet(sleutel, { ...c, pauze: e.target.value })} /></label>
         </div>
         <p className="urenteller">{uren === null ? 'Controleer de tijden' : toonUren(uren)}</p>
+        <label>
+          Soort
+          <select value={c.soort} onChange={(e) => zet(sleutel, { ...c, soort: e.target.value as Concept['soort'] })}>
+            <option value="werk">Werk</option>
+            <option value="reis">Reistijd</option>
+          </select>
+        </label>
         <label>
           Klant
           <select value={c.klant_id} onChange={(e) => zet(sleutel, { ...c, klant_id: e.target.value })}>
@@ -419,15 +330,6 @@ export default function Uren() {
     <main className="pagina">
       <h1>Urenregistratie</h1>
 
-      <Klokvak
-        klanten={klanten}
-        klantNaam={klantNaam}
-        klaar={(datum) => {
-          setWie('')
-          if (dagen.includes(datum)) void laad()
-          else setRond(datum)
-        }}
-      />
 
       {isBeheerder && (
         <label className="formulier">
@@ -459,7 +361,7 @@ export default function Uren() {
           {dagen.map((dag) => {
             const lijst = perDag.get(dag) ?? []
             const nieuwSleutel = `nieuw:${dag}`
-            const dagTotaal = lijst.reduce((som, r) => som + Number(r.uren), 0)
+            const dagTotaal = lijst.filter((r) => !isReis(r)).reduce((som, r) => som + Number(r.uren), 0)
             return (
               <li key={dag} className={`weekdag${dag === vandaag() ? ' vandaag' : ''}${lijst.length === 0 && !concepten[nieuwSleutel] ? ' leeg' : ''}`}>
                 <div className="dagkop">
@@ -473,14 +375,20 @@ export default function Uren() {
                   concepten[r.id] ? (
                     formulier(r.id, concepten[r.id], r)
                   ) : (
-                    <div className="urenregel" key={r.id}>
+                    <div className={`urenregel${isReis(r) ? ' reisregel' : ''}`} key={r.id}>
                       <div>
                         <div>
                           <span className="tijden">{tijd(r.begintijd)} – {tijd(r.eindtijd)}</span>
                           <strong className="urentotaal">{toonUren(Number(r.uren))}</strong>
                         </div>
                         <div className="klein">
-                          {r.klant_id ? <span className="klantlabel">{klantNaam(r.klant_id)}</span> : 'Algemeen werk'}
+                          {isReis(r) ? (
+                            <span className="reislabel"><Busje breed={24} /> Reistijd</span>
+                          ) : r.klant_id ? (
+                            <span className="klantlabel">{klantNaam(r.klant_id)}</span>
+                          ) : (
+                            'Algemeen werk'
+                          )}
                           {r.pauze_minuten > 0 && ` · ${r.pauze_minuten} min pauze`}
                           {r.opmerking && ` · ${r.opmerking}`}
                         </div>
@@ -524,6 +432,12 @@ export default function Uren() {
         <strong>Totaal week {weeknr}</strong>
         <strong>{toonUren(totaal)}</strong>
       </div>
+      {reistijd > 0 && (
+        <div className="controle rij knoppen reistotaal">
+          <span>Reistijd week {weeknr}</span>
+          <span>{toonUren(reistijd)}</span>
+        </div>
+      )}
 
       <div className="weekacties">
         {isBeheerder && open.length > 0 && (

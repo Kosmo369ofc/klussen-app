@@ -159,7 +159,7 @@ function schrijfUren(hoofdmap, uren, namen, klantnamen) {
   const alle = tabs[0]
   const perWeek = blad.getSheetByName('Per week') || tabs[1] || blad.insertSheet('Per week')
   const klant = (id) => (id ? klantnamen[id] || '?' : '')
-  const kop = ['Week', 'Dag', 'Datum', 'Medewerker', 'Klant', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
+  const kop = ['Week', 'Dag', 'Datum', 'Medewerker', 'Klant', 'Soort', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
   const dagen = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
   const rijen = uren.map((u) => [
     weeknummer(u.datum),
@@ -167,6 +167,7 @@ function schrijfUren(hoofdmap, uren, namen, klantnamen) {
     new Date(`${u.datum}T12:00:00`),
     namen[u.medewerker_id] || '?',
     klant(u.klant_id),
+    soortNaam(u),
     String(u.begintijd).slice(0, 5),
     String(u.eindtijd).slice(0, 5),
     Number(u.pauze_minuten),
@@ -183,20 +184,24 @@ function schrijfUren(hoofdmap, uren, namen, klantnamen) {
     alle.getRange(2, 3, rijen.length, 1).setNumberFormat('dd-mm-yyyy')
   }
 
-  // Totaal per medewerker per week, nieuwste week bovenaan.
+  // Totaal per medewerker per week, nieuwste week bovenaan. Reistijd apart.
   const totaal = {}
+  const reis = {}
   for (const u of uren) {
     const jaar = isoJaar(u.datum)
     const sleutel = `${jaar}|${String(weeknummer(u.datum)).padStart(2, '0')}|${namen[u.medewerker_id] || '?'}`
-    totaal[sleutel] = (totaal[sleutel] || 0) + Number(u.uren)
+    totaal[sleutel] = totaal[sleutel] || 0
+    reis[sleutel] = reis[sleutel] || 0
+    if (isReis(u)) reis[sleutel] += Number(u.uren)
+    else totaal[sleutel] += Number(u.uren)
   }
   const weekRijen = Object.keys(totaal)
     .sort((a, b) => (a.slice(0, 7) === b.slice(0, 7) ? a.localeCompare(b) : b.localeCompare(a)))
     .map((k) => {
       const [jaar, week, naam] = k.split('|')
-      return [Number(jaar), Number(week), naam, Math.round(totaal[k] * 100) / 100]
+      return [Number(jaar), Number(week), naam, Math.round(totaal[k] * 100) / 100, Math.round(reis[k] * 100) / 100]
     })
-  const weekKop = ['Jaar', 'Week', 'Medewerker', 'Uren']
+  const weekKop = ['Jaar', 'Week', 'Medewerker', 'Uren', 'Reistijd (uren)']
   perWeek.clearContents()
   perWeek.getRange(1, 1, 1, weekKop.length).setValues([weekKop]).setFontWeight('bold')
   perWeek.setFrozenRows(1)
@@ -215,16 +220,29 @@ function schrijfUren(hoofdmap, uren, namen, klantnamen) {
 }
 
 function schrijfMedewerkerTab(tab, uren, dagen, klant) {
-  const kop = ['Week', 'Dag', 'Datum', 'Klant', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
+  const kop = ['Week', 'Dag', 'Datum', 'Klant', 'Soort', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
+  const leeg = () => kop.map(() => '')
   const rijen = []
   const vet = []
   let huidig = null
   let som = 0
+  let somReis = 0
   const sluitWeek = () => {
     if (huidig === null) return
-    rijen.push([`Totaal week ${huidig.split('|')[1]}`, '', '', '', '', '', '', Math.round(som * 100) / 100, '', ''])
+    const week = huidig.split('|')[1]
+    const rij = leeg()
+    rij[0] = `Totaal week ${week}`
+    rij[8] = Math.round(som * 100) / 100
+    rijen.push(rij)
     vet.push(rijen.length + 1)
-    rijen.push(['', '', '', '', '', '', '', '', '', ''])
+    if (somReis > 0) {
+      const r = leeg()
+      r[0] = `Reistijd week ${week}`
+      r[8] = Math.round(somReis * 100) / 100
+      rijen.push(r)
+      vet.push(rijen.length + 1)
+    }
+    rijen.push(leeg())
   }
   // Uren komen nieuwste eerst binnen: per week de dagen van maandag naar zondag.
   const opWeek = {}
@@ -241,6 +259,7 @@ function schrijfMedewerkerTab(tab, uren, dagen, klant) {
     sluitWeek()
     huidig = w
     som = 0
+    somReis = 0
     const dagUren = opWeek[w].slice().sort((a, b) => (a.datum + a.begintijd).localeCompare(b.datum + b.begintijd))
     for (const u of dagUren) {
       rijen.push([
@@ -248,6 +267,7 @@ function schrijfMedewerkerTab(tab, uren, dagen, klant) {
         dagen[new Date(`${u.datum}T12:00:00`).getDay()],
         new Date(`${u.datum}T12:00:00`),
         klant(u.klant_id),
+        soortNaam(u),
         String(u.begintijd).slice(0, 5),
         String(u.eindtijd).slice(0, 5),
         Number(u.pauze_minuten),
@@ -255,7 +275,8 @@ function schrijfMedewerkerTab(tab, uren, dagen, klant) {
         u.opmerking || '',
         u.goedgekeurd ? 'ja' : 'nee',
       ])
-      som += Number(u.uren)
+      if (isReis(u)) somReis += Number(u.uren)
+      else som += Number(u.uren)
     }
   }
   sluitWeek()
@@ -268,6 +289,15 @@ function schrijfMedewerkerTab(tab, uren, dagen, klant) {
     tab.getRange(2, 3, rijen.length, 1).setNumberFormat('dd-mm-yyyy')
   }
   for (const r of vet) tab.getRange(r, 1, 1, kop.length).setFontWeight('bold')
+}
+
+// Reistijd telt apart van de werkuren. Oude regels zonder soort zijn werk.
+function isReis(u) {
+  return u.soort === 'reis'
+}
+
+function soortNaam(u) {
+  return isReis(u) ? 'Reistijd' : 'Werk'
 }
 
 // Tabbladnamen mogen niet dubbel en niet langer dan 100 tekens zijn.

@@ -12,6 +12,7 @@ import Medewerkers from './pages/Medewerkers'
 import Overzicht from './pages/Overzicht'
 import Facturatie from './pages/Facturatie'
 import Uren from './pages/Uren'
+import Start from './pages/Start'
 import Foutvanger from './Foutvanger'
 import beeldmerk from './assets/beeldmerk.svg'
 
@@ -67,8 +68,9 @@ function Menu({ isBeheerder, naam, openBeurten, pathname, sluiten }: {
   }, [sluiten])
 
   const tegels = [
+    { naar: '/', icoon: '⏱️', tekst: 'Klokken', actief: pathname === '/' },
     { naar: '/uren', icoon: '🕒', tekst: 'Uren invullen', actief: pathname.startsWith('/uren') },
-    { naar: '/', icoon: '🌿', tekst: 'Tuinonderhoud', actief: pathname === '/' || pathname.startsWith('/klanten') },
+    { naar: '/klanten', icoon: '🌿', tekst: 'Tuinonderhoud', actief: pathname.startsWith('/klanten') },
     { naar: '/overzicht', icoon: '📋', tekst: 'Overzicht', actief: pathname.startsWith('/overzicht') },
     ...(isBeheerder
       ? [
@@ -190,7 +192,8 @@ function Schil() {
       <Wachtrijbalk />
       <Foutvanger key={pathname}>
         <Routes>
-          <Route path="/" element={<Klanten />} />
+          <Route path="/" element={<Start />} />
+          <Route path="/klanten" element={<Klanten />} />
           <Route path="/klanten/:id" element={<Klant />} />
           <Route path="/klanten/:id/bezoek" element={<NieuwBezoek />} />
           {isBeheerder && <Route path="/klanten/nieuw" element={<KlantBewerken />} />}

@@ -105,7 +105,7 @@ export default function Klant() {
 
   return (
     <main className="pagina">
-      <Link to="/" className="terug">← Klanten</Link>
+      <Link to="/klanten" className="terug">← Klanten</Link>
       {melding && <p className="melding">{melding}</p>}
       <div className="kop">
         <h1>{klant.naam}</h1>

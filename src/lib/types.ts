@@ -153,6 +153,8 @@ export interface Werkuren {
   goedgekeurd: boolean
   // Voor welke klant, voor de facturatie. Leeg: algemeen werk.
   klant_id: string | null
+  // Werk of reistijd. Reistijd telt apart van de werkuren.
+  soort: 'werk' | 'reis'
 }
 
 // Wie nu aan het werk is (in- en uitklokken).
@@ -162,4 +164,5 @@ export interface Ingeklokt {
   klant_id: string | null
   pauze_sinds: string | null
   pauze_minuten: number
+  soort: 'werk' | 'reis'
 }
