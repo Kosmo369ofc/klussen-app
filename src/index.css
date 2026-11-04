@@ -170,3 +170,6 @@ button.knop-invullen:hover { background: #d6e1d3; }
 .urenformulier { display: flex; flex-direction: column; gap: 10px; background: #faf9f5; border: 1px solid var(--rand); border-radius: 8px; padding: 10px 12px; }
 .urenformulier label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; }
 .urenteller { margin: -2px 0 0; font-weight: 600; color: var(--groen); }
+.weekacties { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.weekacties button { width: 100%; padding: 12px; font-weight: 500; }
+.weekacties button.knop-zacht { background: var(--groen-zacht); color: var(--groen); }

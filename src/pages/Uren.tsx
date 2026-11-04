@@ -410,19 +410,20 @@ export default function Uren() {
         <strong>{toonUren(totaal)}</strong>
       </div>
 
-      <div className="rij knoppen">
-        <button
-          type="button"
-          disabled={!regels?.length}
-          onClick={() => downloaden(`Uren week ${weeknr} ${jaar} ${naam(persoon)}.csv`, urenNaarCsv(regels ?? [], naam, klantNaam))}
-        >
-          Week downloaden
-        </button>
+      <div className="weekacties">
         {isBeheerder && open.length > 0 && (
-          <button type="button" className="knop-klein" onClick={() => goedkeuren(open, true)}>
+          <button type="button" onClick={() => goedkeuren(open, true)}>
             Hele week goedkeuren ({open.length})
           </button>
         )}
+        <button
+          type="button"
+          className={isBeheerder && open.length > 0 ? 'knop-zacht' : ''}
+          disabled={!regels?.length}
+          onClick={() => downloaden(`Uren week ${weeknr} ${jaar} ${naam(persoon)}.csv`, urenNaarCsv(regels ?? [], naam, klantNaam))}
+        >
+          ⤓ Week downloaden
+        </button>
       </div>
 
       {isBeheerder && weekTotalen.length > 0 && (
