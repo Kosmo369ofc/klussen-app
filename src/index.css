@@ -151,16 +151,17 @@ button.knop-rond { width: 44px; height: 44px; padding: 0; font-size: 1.2rem; bac
 .midden { text-align: center; margin: 4px 0; }
 .weekdagen { list-style: none; padding: 0; margin: 12px 0; display: flex; flex-direction: column; gap: 8px; }
 .weekdag { background: var(--kaart); border: 1px solid var(--rand); border-radius: 10px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
-.weekdag.vandaag { border-color: var(--groen); box-shadow: inset 4px 0 0 var(--groen); }
-.weekdag.leeg { background: transparent; }
+.weekdag.vandaag { border: 2px solid var(--groen); border-left-width: 6px; }
+/* Opmaak F: witte dagvakken, zachtgroene knoppen, vandaag met dikke groene rand. */
+:root { --groen-zacht: #e4ebe2; }
 .dagkop { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-button.knop-klein { background: var(--kaart); color: var(--groen); border: 1px solid var(--rand); padding: 6px 14px; font-size: 0.9rem; font-weight: 500; }
-button.knop-klein:hover { border-color: var(--groen); }
+button.knop-klein { background: var(--groen-zacht); color: var(--groen); border: 1px solid transparent; padding: 6px 14px; font-size: 0.9rem; font-weight: 500; }
+button.knop-klein:hover { background: #d6e1d3; }
 button.knop-klein.gevaar { color: var(--rood); }
 button.knop-klein.akkoord { background: var(--groen); color: white; border-color: var(--groen); }
 .akkoordlabel { color: var(--groen); font-size: 0.9rem; font-weight: 600; }
-button.knop-invullen { align-self: stretch; background: transparent; color: var(--groen); border: 1px dashed var(--rand); border-radius: 8px; padding: 10px; font-weight: 500; }
-button.knop-invullen:hover { border-color: var(--groen); background: var(--kaart); }
+button.knop-invullen { align-self: stretch; background: var(--groen-zacht); color: var(--groen); border: none; border-radius: 8px; padding: 10px; font-weight: 500; }
+button.knop-invullen:hover { background: #d6e1d3; }
 .urenregel { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid var(--rand); }
 .dagkop + .urenregel { border-top: none; padding-top: 0; }
 .tijden { font-size: 1.05rem; }
