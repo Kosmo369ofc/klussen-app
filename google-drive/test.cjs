@@ -22,7 +22,7 @@ const db = {
   medewerkers: [{ id: 'm1', naam: 'Beau' }, { id: 'm2', naam: 'Jan' }],
   werkuren: [
     { id: 'u1', medewerker_id: 'm2', datum: '2026-11-03', begintijd: '07:30:00', eindtijd: '16:00:00', pauze_minuten: 30, uren: 8, opmerking: null, goedgekeurd: true },
-    { id: 'u2', medewerker_id: 'm2', datum: '2026-11-02', begintijd: '08:00:00', eindtijd: '12:00:00', pauze_minuten: 0, uren: 4, opmerking: 'werkplaats', goedgekeurd: false },
+    { id: 'u2', medewerker_id: 'm2', datum: '2026-11-02', begintijd: '08:00:00', eindtijd: '12:00:00', pauze_minuten: 0, uren: 4, opmerking: 'werkplaats', goedgekeurd: false, klant_id: 'k1' },
     { id: 'u3', medewerker_id: 'm1', datum: '2026-10-28', begintijd: '08:00:00', eindtijd: '17:00:00', pauze_minuten: 60, uren: 8, opmerking: null, goedgekeurd: false },
   ],
   werkzaamheden: [{ id: 'w1', meeteenheid: 'm³' }],
@@ -65,12 +65,12 @@ const fotomap = carin.kind.find((k) => k.naam === "Foto's")
 ok('foto gekopieerd', fotomap.files.length === 1 && fotomap.files[0].naam === '2026-10-07 a.jpg')
 const uren = Object.values(items).find((x) => x.naam === 'Urenregistratie medewerkers')
 ok('apart urenbestand in hoofdmap', uren && uren.map === hoofd)
-ok('alle uren met week en wie', uren.tabs[0].naam === 'Alle uren' && uren.tabs[0].cel['2,1'] === 45 && uren.tabs[0].cel['2,2'] === 'dinsdag' && uren.tabs[0].cel['2,4'] === 'Jan' && uren.tabs[0].cel['2,5'] === '07:30' && uren.tabs[0].cel['3,9'] === 'werkplaats')
+ok('alle uren met week en wie', uren.tabs[0].naam === 'Alle uren' && uren.tabs[0].cel['2,1'] === 45 && uren.tabs[0].cel['2,2'] === 'dinsdag' && uren.tabs[0].cel['2,4'] === 'Jan' && uren.tabs[0].cel['2,5'] === '' && uren.tabs[0].cel['3,5'] === 'Carin Bodewes' && uren.tabs[0].cel['2,6'] === '07:30' && uren.tabs[0].cel['3,10'] === 'werkplaats')
 ok('per week opgeteld, nieuwste bovenaan', uren.tabs[1].naam === 'Per week' && uren.tabs[1].cel['2,2'] === 45 && uren.tabs[1].cel['2,4'] === 12 && uren.tabs[1].cel['3,2'] === 44 && uren.tabs[1].cel['3,3'] === 'Beau')
 ok('tabblad per medewerker op naam', uren.tabs.map((t) => t.naam).join('|') === 'Alle uren|Per week|Beau|Jan')
 const jan = uren.tabs[3]
-ok('jan: maandag voor dinsdag', jan.cel['2,2'] === 'maandag' && jan.cel['3,2'] === 'dinsdag' && jan.cel['2,7'] === 4)
-ok('jan: weektotaal vet', jan.cel['4,1'] === 'Totaal week 45' && jan.cel['4,7'] === 12 && jan.vet.includes(4))
+ok('jan: maandag voor dinsdag', jan.cel['2,2'] === 'maandag' && jan.cel['2,4'] === 'Carin Bodewes' && jan.cel['3,2'] === 'dinsdag' && jan.cel['2,8'] === 4)
+ok('jan: weektotaal vet', jan.cel['4,1'] === 'Totaal week 45' && jan.cel['4,8'] === 12 && jan.vet.includes(4))
 // Tweede keer: niets dubbel, hernoemen werkt.
 db.klanten[0].naam = 'Carin Bodewes-Jansen'
 ctx.bijwerken()
