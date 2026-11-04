@@ -144,8 +144,14 @@ input[type='search'] { margin-bottom: 8px; }
 .balk span { letter-spacing: 0.3em; font-weight: 600; font-size: 0.95rem; }
 .inlogscherm { text-align: center; margin-bottom: 12px; }
 .inlogscherm img { width: 100%; max-width: 260px; height: auto; }
-.urenformulier { background: var(--kaart); border: 1px solid var(--rand); border-radius: 10px; padding: 12px 14px; }
-.urenformulier h2 { margin-top: 0; }
-.urenbalk { margin-bottom: 8px; }
-.nowrap { white-space: nowrap; }
-@media (max-width: 600px) { .verberg-smal { display: none; } }
+/* Urenregistratie: weekoverzicht */
+.weekkop { display: flex; align-items: center; justify-content: space-between; text-align: center; margin: 16px 0 4px; }
+.weekkop h2 { margin: 0; }
+.weekkop button.link { font-size: 1.6rem; text-decoration: none; padding: 4px 14px; }
+.midden { text-align: center; margin: 4px 0; }
+.weekdagen { list-style: none; padding: 0; margin: 12px 0; display: flex; flex-direction: column; gap: 8px; }
+.weekdag { background: var(--kaart); border: 1px solid var(--rand); border-radius: 10px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+.weekdag.vandaag { border-color: var(--groen); box-shadow: inset 4px 0 0 var(--groen); }
+.weekdag.leeg { background: transparent; }
+.dagkop { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.weekdag > button.link { align-self: flex-start; }

@@ -17,7 +17,8 @@ Werkt op telefoon en laptop; alles staat in één online database, dus het is ov
   facturatie-overzicht met per beurt gefactureerd ja of nee; medewerkers beheren
 
 - Urenregistratie voor medewerkers, los van de klantbeurten: per werkdag begin, eind en pauze.
-  Medewerkers zien alleen hun eigen uren; de beheerder ziet iedereen, keurt goed en kan per week of maand
+  Weekoverzicht met weeknummer en per dag de dag en datum; een dag invullen begint op 07:00–16:00 met een uur pauze.
+  Iedereen vult alleen zijn eigen uren in; de beheerder bekijkt ieders week, keurt goed en kan per week
   een bestand downloaden (opent in Excel en Google Sheets). Het Drive-script zet alle uren ook in een apart
   bestand **Urenregistratie medewerkers** in de map Klussen-app
 
