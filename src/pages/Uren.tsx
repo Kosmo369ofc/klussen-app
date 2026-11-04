@@ -5,7 +5,14 @@ import { toonUren, vandaag } from '../lib/datum'
 import type { Medewerker, Werkuren } from '../lib/types'
 
 // Standaard bij het invullen van een dag.
-const STANDAARD = { begintijd: '07:00', eindtijd: '16:00', pauze: '60' }
+const BEGIN = '07:00'
+const EIND = '16:00'
+const PAUZE = 60
+
+interface KlantKort {
+  id: string
+  naam: string
+}
 
 function iso(d: Date): string {
   const k = new Date(d)
@@ -50,13 +57,19 @@ const minuten = (t: string) => {
   const [u, m] = t.split(':').map(Number)
   return u * 60 + m
 }
+const alsTijd = (min: number) => {
+  const m = Math.min(Math.max(min, 0), 23 * 60 + 59)
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+}
 
 interface Concept {
   id: string
+  dag: string
   begintijd: string
   eindtijd: string
   pauze: string
   opmerking: string
+  klant_id: string
 }
 
 function berekend(c: Concept): number | null {
@@ -65,16 +78,29 @@ function berekend(c: Concept): number | null {
   return netto > 0 ? netto / 60 : null
 }
 
+// Nieuwe begintijd: begin je na 16:00 (of na de eindtijd), dan wordt de eindtijd
+// een uur later. Past de pauze er dan niet meer in, dan vervalt die.
+function nieuweBegintijd(c: Concept, begintijd: string): Concept {
+  const volgende = { ...c, begintijd }
+  if (!begintijd) return volgende
+  if (minuten(begintijd) >= minuten(EIND) || !c.eindtijd || minuten(c.eindtijd) <= minuten(begintijd)) {
+    volgende.eindtijd = alsTijd(minuten(begintijd) + 60)
+  }
+  if (minuten(volgende.eindtijd) - minuten(begintijd) <= (Number(volgende.pauze) || 0)) volgende.pauze = '0'
+  return volgende
+}
+
 // Een apart bestand met de uren, dat Excel en Google Sheets goed openen.
-function urenNaarCsv(regels: Werkuren[], naam: (id: string) => string): string {
+function urenNaarCsv(regels: Werkuren[], naam: (id: string) => string, klant: (id: string | null) => string): string {
   const veld = (v: string) => (/[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
   const rijen = [
-    ['Week', 'Dag', 'Datum', 'Medewerker', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd'],
+    ['Week', 'Dag', 'Datum', 'Medewerker', 'Klant', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd'],
     ...regels.map((r) => [
       String(weeknummer(r.datum)[0]),
       dagnaam(r.datum),
       r.datum.split('-').reverse().join('-'),
       naam(r.medewerker_id),
+      klant(r.klant_id),
       tijd(r.begintijd),
       tijd(r.eindtijd),
       String(r.pauze_minuten),
@@ -101,8 +127,10 @@ export default function Uren() {
   // Wiens week je bekijkt. Invullen kan alleen in je eigen week.
   const [wie, setWie] = useState('')
   const [medewerkers, setMedewerkers] = useState<Medewerker[]>([])
+  const [klanten, setKlanten] = useState<KlantKort[]>([])
   const [regels, setRegels] = useState<Werkuren[] | null>(null)
   const [alleRegels, setAlleRegels] = useState<Werkuren[]>([])
+  // Open formulieren: op id van de regel, of 'nieuw:<datum>'.
   const [concepten, setConcepten] = useState<Record<string, Concept>>({})
   const [fout, setFout] = useState<Record<string, string>>({})
   const [bezig, setBezig] = useState('')
@@ -113,6 +141,12 @@ export default function Uren() {
   const eigen = persoon === ik?.id
 
   useEffect(() => {
+    supabase
+      .from('klanten')
+      .select('id, naam')
+      .eq('actief', true)
+      .order('naam')
+      .then(({ data }) => setKlanten((data as KlantKort[]) ?? []))
     if (!isBeheerder) return
     supabase
       .from('medewerkers')
@@ -145,69 +179,91 @@ export default function Uren() {
     (id: string) => (id === ik?.id ? ik.naam : medewerkers.find((m) => m.id === id)?.naam ?? '?'),
     [ik, medewerkers],
   )
+  const klantNaam = useCallback((id: string | null) => (id ? klanten.find((k) => k.id === id)?.naam ?? 'Oud-klant' : ''), [klanten])
 
   const perDag = useMemo(() => {
-    const m = new Map<string, Werkuren>()
-    for (const r of regels ?? []) if (!m.has(r.datum)) m.set(r.datum, r)
+    const m = new Map<string, Werkuren[]>()
+    for (const r of regels ?? []) m.set(r.datum, [...(m.get(r.datum) ?? []), r])
     return m
   }, [regels])
 
   const totaal = (regels ?? []).reduce((som, r) => som + Number(r.uren), 0)
 
-  function invullen(dag: string) {
-    const r = perDag.get(dag)
+  function nieuw(dag: string) {
+    const bestaand = perDag.get(dag) ?? []
+    const laatste = bestaand[bestaand.length - 1]
+    const begin = laatste ? tijd(laatste.eindtijd) : BEGIN
+    const basis: Concept = {
+      id: '',
+      dag,
+      begintijd: begin,
+      eindtijd: EIND,
+      pauze: String(laatste ? 0 : PAUZE),
+      opmerking: '',
+      klant_id: laatste?.klant_id ?? '',
+    }
+    setConcepten({ ...concepten, [`nieuw:${dag}`]: nieuweBegintijd(basis, begin) })
+  }
+
+  function wijzigen(r: Werkuren) {
     setConcepten({
       ...concepten,
-      [dag]: r
-        ? { id: r.id, begintijd: tijd(r.begintijd), eindtijd: tijd(r.eindtijd), pauze: String(r.pauze_minuten), opmerking: r.opmerking ?? '' }
-        : { id: '', ...STANDAARD, opmerking: '' },
+      [r.id]: {
+        id: r.id,
+        dag: r.datum,
+        begintijd: tijd(r.begintijd),
+        eindtijd: tijd(r.eindtijd),
+        pauze: String(r.pauze_minuten),
+        opmerking: r.opmerking ?? '',
+        klant_id: r.klant_id ?? '',
+      },
     })
   }
 
-  function wijzigConcept(dag: string, wijziging: Partial<Concept>) {
-    setConcepten({ ...concepten, [dag]: { ...concepten[dag], ...wijziging } })
+  function zet(sleutel: string, c: Concept) {
+    setConcepten({ ...concepten, [sleutel]: c })
   }
 
-  function sluit(dag: string) {
+  function sluit(sleutel: string) {
     const rest = { ...concepten }
-    delete rest[dag]
+    delete rest[sleutel]
     setConcepten(rest)
-    setFout({ ...fout, [dag]: '' })
+    setFout({ ...fout, [sleutel]: '' })
   }
 
-  async function opslaan(dag: string) {
-    const c = concepten[dag]
+  async function opslaan(sleutel: string) {
+    const c = concepten[sleutel]
     if (!c.begintijd || !c.eindtijd || c.eindtijd <= c.begintijd) {
-      setFout({ ...fout, [dag]: 'De eindtijd moet na de begintijd liggen.' })
+      setFout({ ...fout, [sleutel]: 'De eindtijd moet na de begintijd liggen.' })
       return
     }
     if (berekend(c) === null) {
-      setFout({ ...fout, [dag]: 'De pauze is langer dan de werktijd.' })
+      setFout({ ...fout, [sleutel]: 'De pauze is langer dan de werktijd.' })
       return
     }
-    setBezig(dag)
+    setBezig(sleutel)
     const { error } = await supabase.from('werkuren').upsert({
       id: c.id || crypto.randomUUID(),
-      datum: dag,
+      datum: c.dag,
       begintijd: c.begintijd,
       eindtijd: c.eindtijd,
       pauze_minuten: Math.max(0, Math.round(Number(c.pauze) || 0)),
       opmerking: c.opmerking.trim() || null,
+      klant_id: c.klant_id || null,
     })
     setBezig('')
     if (error) {
-      setFout({ ...fout, [dag]: 'Opslaan lukte niet. Controleer je internet en probeer het opnieuw.' })
+      setFout({ ...fout, [sleutel]: 'Opslaan lukte niet. Controleer je internet en probeer het opnieuw.' })
       return
     }
-    sluit(dag)
+    sluit(sleutel)
     void laad()
   }
 
-  async function wissen(dag: string) {
-    const r = perDag.get(dag)
-    if (!r || !confirm(`Uren van ${dagnaam(dag).toLowerCase()} ${datumKort(dag)} wissen?`)) return
+  async function wissen(r: Werkuren) {
+    if (!confirm(`Uren van ${dagnaam(r.datum).toLowerCase()} ${datumKort(r.datum)}, ${tijd(r.begintijd)}–${tijd(r.eindtijd)} wissen?`)) return
     await supabase.from('werkuren').delete().eq('id', r.id)
-    sluit(dag)
+    sluit(r.id)
     void laad()
   }
 
@@ -223,6 +279,36 @@ export default function Uren() {
     for (const r of alleRegels) per.set(r.medewerker_id, (per.get(r.medewerker_id) ?? 0) + Number(r.uren))
     return [...per.entries()].sort((a, b) => naam(a[0]).localeCompare(naam(b[0])))
   }, [alleRegels, naam])
+
+  function formulier(sleutel: string, c: Concept, bestaand?: Werkuren) {
+    const uren = berekend(c)
+    return (
+      <div className="urenformulier" key={sleutel}>
+        <div className="drie">
+          <label>Begin<input type="time" value={c.begintijd} onChange={(e) => zet(sleutel, nieuweBegintijd(c, e.target.value))} /></label>
+          <label>Eind<input type="time" value={c.eindtijd} onChange={(e) => zet(sleutel, { ...c, eindtijd: e.target.value })} /></label>
+          <label>Pauze (min)<input type="number" inputMode="numeric" min="0" step="5" value={c.pauze} onChange={(e) => zet(sleutel, { ...c, pauze: e.target.value })} /></label>
+        </div>
+        <p className="urenteller">{uren === null ? 'Controleer de tijden' : toonUren(uren)}</p>
+        <label>
+          Klant
+          <select value={c.klant_id} onChange={(e) => zet(sleutel, { ...c, klant_id: e.target.value })}>
+            <option value="">Geen klant (algemeen werk)</option>
+            {klanten.map((k) => <option key={k.id} value={k.id}>{k.naam}</option>)}
+          </select>
+        </label>
+        <label>Opmerking<input value={c.opmerking} placeholder="Niet verplicht" onChange={(e) => zet(sleutel, { ...c, opmerking: e.target.value })} /></label>
+        {fout[sleutel] && <p className="fout">{fout[sleutel]}</p>}
+        <div className="rij knoppen">
+          <button disabled={bezig === sleutel} onClick={() => opslaan(sleutel)}>{bezig === sleutel ? 'Bezig…' : 'Opslaan'}</button>
+          <span className="rij">
+            {bestaand && <button className="knop-klein gevaar" onClick={() => wissen(bestaand)}>Wissen</button>}
+            <button className="knop-klein" onClick={() => sluit(sleutel)}>Annuleren</button>
+          </span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <main className="pagina">
@@ -240,15 +326,15 @@ export default function Uren() {
       )}
 
       <div className="weekkop">
-        <button type="button" className="link" onClick={() => setRond(verschuif(rond, -1))} aria-label="Vorige week">←</button>
+        <button type="button" className="knop-rond" onClick={() => setRond(verschuif(rond, -1))} aria-label="Vorige week">←</button>
         <div>
           <h2>Week {weeknr}</h2>
           <span className="klein">{datumKort(dagen[0])} – {datumKort(dagen[6])} {jaar}</span>
         </div>
-        <button type="button" className="link" onClick={() => setRond(verschuif(rond, 1))} aria-label="Volgende week">→</button>
+        <button type="button" className="knop-rond" onClick={() => setRond(verschuif(rond, 1))} aria-label="Volgende week">→</button>
       </div>
       {!dagen.includes(vandaag()) && (
-        <p className="midden"><button type="button" className="link" onClick={() => setRond(vandaag())}>Naar deze week</button></p>
+        <p className="midden"><button type="button" className="knop-klein" onClick={() => setRond(vandaag())}>Naar deze week</button></p>
       )}
 
       {regels === null ? (
@@ -256,56 +342,63 @@ export default function Uren() {
       ) : (
         <ul className="weekdagen">
           {dagen.map((dag) => {
-            const r = perDag.get(dag)
-            const c = concepten[dag]
-            const vandaagDag = dag === vandaag()
+            const lijst = perDag.get(dag) ?? []
+            const nieuwSleutel = `nieuw:${dag}`
+            const dagTotaal = lijst.reduce((som, r) => som + Number(r.uren), 0)
             return (
-              <li key={dag} className={`weekdag${vandaagDag ? ' vandaag' : ''}${!r && !c ? ' leeg' : ''}`}>
+              <li key={dag} className={`weekdag${dag === vandaag() ? ' vandaag' : ''}${lijst.length === 0 && !concepten[nieuwSleutel] ? ' leeg' : ''}`}>
                 <div className="dagkop">
                   <div>
                     <strong>{dagnaam(dag)}</strong> <span className="klein">{datumKort(dag)}</span>
                   </div>
-                  {r && !c && <strong>{toonUren(Number(r.uren))}</strong>}
-                  {c && berekend(c) !== null && <strong>{toonUren(berekend(c)!)}</strong>}
+                  {lijst.length > 1 && <span className="klein">Totaal {toonUren(dagTotaal)}</span>}
                 </div>
 
-                {c ? (
-                  <div className="formulier">
-                    <div className="drie">
-                      <label>Begin<input type="time" value={c.begintijd} onChange={(e) => wijzigConcept(dag, { begintijd: e.target.value })} /></label>
-                      <label>Eind<input type="time" value={c.eindtijd} onChange={(e) => wijzigConcept(dag, { eindtijd: e.target.value })} /></label>
-                      <label>Pauze (min)<input type="number" inputMode="numeric" min="0" step="5" value={c.pauze} onChange={(e) => wijzigConcept(dag, { pauze: e.target.value })} /></label>
+                {lijst.map((r) =>
+                  concepten[r.id] ? (
+                    formulier(r.id, concepten[r.id], r)
+                  ) : (
+                    <div className="urenregel" key={r.id}>
+                      <div>
+                        <div>
+                          <span className="tijden">{tijd(r.begintijd)} – {tijd(r.eindtijd)}</span>
+                          <strong className="urentotaal">{toonUren(Number(r.uren))}</strong>
+                        </div>
+                        <div className="klein">
+                          {r.klant_id ? <span className="klantlabel">{klantNaam(r.klant_id)}</span> : 'Algemeen werk'}
+                          {r.pauze_minuten > 0 && ` · ${r.pauze_minuten} min pauze`}
+                          {r.opmerking && ` · ${r.opmerking}`}
+                        </div>
+                      </div>
+                      <div className="rij">
+                        {isBeheerder ? (
+                          <button
+                            className={`knop-klein${r.goedgekeurd ? ' akkoord' : ''}`}
+                            onClick={() => goedkeuren([r.id], !r.goedgekeurd)}
+                            title={r.goedgekeurd ? 'Goedkeuring intrekken' : 'Goedkeuren'}
+                          >
+                            {r.goedgekeurd ? '✓ Akkoord' : 'Akkoord'}
+                          </button>
+                        ) : r.goedgekeurd ? (
+                          <span className="akkoordlabel">✓ Akkoord</span>
+                        ) : null}
+                        {eigen && (isBeheerder || !r.goedgekeurd) && (
+                          <button className="knop-klein" onClick={() => wijzigen(r)}>Wijzigen</button>
+                        )}
+                      </div>
                     </div>
-                    <label>Opmerking<input value={c.opmerking} placeholder="Niet verplicht" onChange={(e) => wijzigConcept(dag, { opmerking: e.target.value })} /></label>
-                    {fout[dag] && <p className="fout">{fout[dag]}</p>}
-                    <div className="rij knoppen">
-                      <button disabled={bezig === dag} onClick={() => opslaan(dag)}>{bezig === dag ? 'Bezig…' : 'Opslaan'}</button>
-                      <span className="rij">
-                        {r && <button className="link gevaar" onClick={() => wissen(dag)}>Wissen</button>}
-                        <button className="link" onClick={() => sluit(dag)}>Annuleren</button>
-                      </span>
-                    </div>
-                  </div>
-                ) : r ? (
-                  <div className="rij knoppen">
-                    <span>
-                      {tijd(r.begintijd)} – {tijd(r.eindtijd)}, {r.pauze_minuten} min pauze
-                      {r.opmerking && <span className="klein"> · {r.opmerking}</span>}
-                    </span>
-                    <span className="rij">
-                      {isBeheerder ? (
-                        <label className="vinkje"><input type="checkbox" checked={r.goedgekeurd} onChange={(e) => goedkeuren([r.id], e.target.checked)} /> Akkoord</label>
-                      ) : r.goedgekeurd ? (
-                        <span className="klein">✓ Goedgekeurd</span>
-                      ) : null}
-                      {eigen && (isBeheerder || !r.goedgekeurd) && <button className="link" onClick={() => invullen(dag)}>Wijzigen</button>}
-                    </span>
-                  </div>
-                ) : eigen ? (
-                  <button className="link" onClick={() => invullen(dag)}>+ Uren invullen</button>
-                ) : (
-                  <span className="klein">Niet ingevuld</span>
+                  ),
                 )}
+
+                {concepten[nieuwSleutel] ? (
+                  formulier(nieuwSleutel, concepten[nieuwSleutel])
+                ) : eigen ? (
+                  <button className="knop-invullen" onClick={() => nieuw(dag)}>
+                    {lijst.length ? '+ Nog een klant of tijdvak' : '+ Uren invullen'}
+                  </button>
+                ) : lijst.length === 0 ? (
+                  <span className="klein">Niet ingevuld</span>
+                ) : null}
               </li>
             )
           })}
@@ -321,12 +414,12 @@ export default function Uren() {
         <button
           type="button"
           disabled={!regels?.length}
-          onClick={() => downloaden(`Uren week ${weeknr} ${jaar} ${naam(persoon)}.csv`, urenNaarCsv(regels ?? [], naam))}
+          onClick={() => downloaden(`Uren week ${weeknr} ${jaar} ${naam(persoon)}.csv`, urenNaarCsv(regels ?? [], naam, klantNaam))}
         >
           Week downloaden
         </button>
         {isBeheerder && open.length > 0 && (
-          <button type="button" className="link" onClick={() => goedkeuren(open, true)}>
+          <button type="button" className="knop-klein" onClick={() => goedkeuren(open, true)}>
             Hele week goedkeuren ({open.length})
           </button>
         )}
@@ -348,8 +441,8 @@ export default function Uren() {
           <p>
             <button
               type="button"
-              className="link"
-              onClick={() => downloaden(`Uren week ${weeknr} ${jaar} iedereen.csv`, urenNaarCsv(alleRegels, naam))}
+              className="knop-klein"
+              onClick={() => downloaden(`Uren week ${weeknr} ${jaar} iedereen.csv`, urenNaarCsv(alleRegels, naam, klantNaam))}
             >
               Week van iedereen downloaden
             </button>

@@ -70,7 +70,11 @@ function bijwerken() {
   } catch (e) {
     console.warn(`Urenregistratie overgeslagen: ${e.message}`)
   }
-  if (uren) schrijfUren(hoofdmap, uren, namen)
+  if (uren) {
+    const klantnamen = {}
+    for (const k of klanten) klantnamen[k.id] = k.naam
+    schrijfUren(hoofdmap, uren, namen, klantnamen)
+  }
 
   let nieuw = 0
   let overgeslagen = 0
@@ -130,18 +134,20 @@ function schrijfBeurten(klant, map, fotomap, bezoeken, namen, eenheden) {
 }
 
 // Urenregistratie staat in een eigen spreadsheet, los van de klantmappen.
-function schrijfUren(hoofdmap, uren, namen) {
+function schrijfUren(hoofdmap, uren, namen, klantnamen) {
   const blad = vindOfMaakBlad('blad:uren', hoofdmap, 'Urenregistratie medewerkers')
   const tabs = blad.getSheets()
   const alle = tabs[0]
   const perWeek = blad.getSheetByName('Per week') || tabs[1] || blad.insertSheet('Per week')
-  const kop = ['Week', 'Dag', 'Datum', 'Medewerker', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
+  const klant = (id) => (id ? klantnamen[id] || '?' : '')
+  const kop = ['Week', 'Dag', 'Datum', 'Medewerker', 'Klant', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
   const dagen = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
   const rijen = uren.map((u) => [
     weeknummer(u.datum),
     dagen[new Date(`${u.datum}T12:00:00`).getDay()],
     new Date(`${u.datum}T12:00:00`),
     namen[u.medewerker_id] || '?',
+    klant(u.klant_id),
     String(u.begintijd).slice(0, 5),
     String(u.eindtijd).slice(0, 5),
     Number(u.pauze_minuten),
@@ -185,21 +191,21 @@ function schrijfUren(hoofdmap, uren, namen) {
   for (const id of ids) {
     const naam = tabNaam(namen[id] || '?', gebruikt)
     const tab = vindOfMaakTab(blad, `tab:uren:${id}`, naam)
-    schrijfMedewerkerTab(tab, perMedewerker[id], dagen)
+    schrijfMedewerkerTab(tab, perMedewerker[id], dagen, klant)
   }
 }
 
-function schrijfMedewerkerTab(tab, uren, dagen) {
-  const kop = ['Week', 'Dag', 'Datum', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
+function schrijfMedewerkerTab(tab, uren, dagen, klant) {
+  const kop = ['Week', 'Dag', 'Datum', 'Klant', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
   const rijen = []
   const vet = []
   let huidig = null
   let som = 0
   const sluitWeek = () => {
     if (huidig === null) return
-    rijen.push([`Totaal week ${huidig.split('|')[1]}`, '', '', '', '', '', Math.round(som * 100) / 100, '', ''])
+    rijen.push([`Totaal week ${huidig.split('|')[1]}`, '', '', '', '', '', '', Math.round(som * 100) / 100, '', ''])
     vet.push(rijen.length + 1)
-    rijen.push(['', '', '', '', '', '', '', '', ''])
+    rijen.push(['', '', '', '', '', '', '', '', '', ''])
   }
   // Uren komen nieuwste eerst binnen: per week de dagen van maandag naar zondag.
   const opWeek = {}
@@ -222,6 +228,7 @@ function schrijfMedewerkerTab(tab, uren, dagen) {
         weeknummer(u.datum),
         dagen[new Date(`${u.datum}T12:00:00`).getDay()],
         new Date(`${u.datum}T12:00:00`),
+        klant(u.klant_id),
         String(u.begintijd).slice(0, 5),
         String(u.eindtijd).slice(0, 5),
         Number(u.pauze_minuten),

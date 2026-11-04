@@ -151,4 +151,6 @@ export interface Werkuren {
   uren: number
   opmerking: string | null
   goedgekeurd: boolean
+  // Voor welke klant, voor de facturatie. Leeg: algemeen werk.
+  klant_id: string | null
 }

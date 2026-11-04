@@ -177,6 +177,13 @@ await als(vreemd, 'vreemd@x.nl', async () => {
   ok('ander ziet geen uren van jan', (await q('select * from werkuren')).rows.length === 0)
 })
 
+// Migratie 0006: klant per urenregel.
+await db.exec(fs.readFileSync(new URL('../migrations/0006_uren_per_klant.sql', import.meta.url), 'utf8').replace(/notify pgrst.*$/m, ''))
+await als(jan, 'jan@x.nl', async () => {
+  await q(`insert into werkuren (datum, begintijd, eindtijd, klant_id) values ('2026-11-05', '07:00', '12:00', $1), ('2026-11-05', '12:00', '16:00', null)`, [klant])
+  ok('jan kiest een klant per urenregel', (await q(`select count(*)::int n from werkuren where datum = '2026-11-05' and klant_id = $1`, [klant])).rows[0].n === 1)
+})
+
 if (mislukt) {
   console.log(`${mislukt} test(s) mislukt`)
   process.exit(1)
