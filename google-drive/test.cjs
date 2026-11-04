@@ -64,7 +64,7 @@ const fotomap = carin.kind.find((k) => k.naam === "Foto's")
 ok('foto gekopieerd', fotomap.files.length === 1 && fotomap.files[0].naam === '2026-10-07 a.jpg')
 const uren = Object.values(items).find((x) => x.naam === 'Urenregistratie medewerkers')
 ok('apart urenbestand in hoofdmap', uren && uren.map === hoofd)
-ok('alle uren met week en wie', uren.tabs[0].naam === 'Alle uren' && uren.tabs[0].cel['2,2'] === 45 && uren.tabs[0].cel['2,3'] === 'Jan' && uren.tabs[0].cel['2,4'] === '07:30' && uren.tabs[0].cel['3,8'] === 'werkplaats')
+ok('alle uren met week en wie', uren.tabs[0].naam === 'Alle uren' && uren.tabs[0].cel['2,1'] === 45 && uren.tabs[0].cel['2,2'] === 'dinsdag' && uren.tabs[0].cel['2,4'] === 'Jan' && uren.tabs[0].cel['2,5'] === '07:30' && uren.tabs[0].cel['3,9'] === 'werkplaats')
 ok('per week opgeteld, nieuwste bovenaan', uren.tabs[1].naam === 'Per week' && uren.tabs[1].cel['2,2'] === 45 && uren.tabs[1].cel['2,4'] === 12 && uren.tabs[1].cel['3,2'] === 44 && uren.tabs[1].cel['3,3'] === 'Beau')
 // Tweede keer: niets dubbel, hernoemen werkt.
 db.klanten[0].naam = 'Carin Bodewes-Jansen'

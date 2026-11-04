@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { toonDatum, toonUren, vandaag } from '../lib/datum'
+import { toonUren, vandaag } from '../lib/datum'
 import type { Medewerker, Werkuren } from '../lib/types'
 
-type Periode = 'week' | 'maand'
+// Standaard bij het invullen van een dag.
+const STANDAARD = { begintijd: '07:00', eindtijd: '16:00', pauze: '60' }
 
 function iso(d: Date): string {
   const k = new Date(d)
@@ -12,53 +13,67 @@ function iso(d: Date): string {
   return k.toISOString().slice(0, 10)
 }
 
-// Begin en eind (beide inclusief) van de week (ma t/m zo) of maand rond een datum.
-function periodeGrenzen(periode: Periode, rond: string): [string, string] {
+// De zeven dagen (maandag t/m zondag) van de week rond een datum.
+function weekdagen(rond: string): string[] {
   const d = new Date(`${rond}T12:00:00`)
-  if (periode === 'week') {
-    const ma = new Date(d)
-    ma.setDate(d.getDate() - ((d.getDay() + 6) % 7))
-    const zo = new Date(ma)
-    zo.setDate(ma.getDate() + 6)
-    return [iso(ma), iso(zo)]
-  }
-  return [iso(new Date(d.getFullYear(), d.getMonth(), 1, 12)), iso(new Date(d.getFullYear(), d.getMonth() + 1, 0, 12))]
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  return Array.from({ length: 7 }, (_, i) => {
+    const dag = new Date(d)
+    dag.setDate(d.getDate() + i)
+    return iso(dag)
+  })
 }
 
-function verschuif(periode: Periode, rond: string, stap: number): string {
+function verschuif(rond: string, weken: number): string {
   const d = new Date(`${rond}T12:00:00`)
-  if (periode === 'week') d.setDate(d.getDate() + 7 * stap)
-  else d.setMonth(d.getMonth() + stap, 1)
+  d.setDate(d.getDate() + 7 * weken)
   return iso(d)
 }
 
-// ISO-weeknummer, zoals in de agenda.
-function weeknummer(datum: string): number {
+// ISO-weeknummer en -jaar, zoals in de agenda.
+function weeknummer(datum: string): [number, number] {
   const d = new Date(`${datum}T12:00:00`)
   d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
   const week1 = new Date(d.getFullYear(), 0, 4, 12)
-  return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
+  const nr = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
+  return [nr, d.getFullYear()]
 }
 
-function periodeTitel(periode: Periode, van: string): string {
-  if (periode === 'week') return `Week ${weeknummer(van)}, ${new Date(`${van}T12:00:00`).getFullYear()}`
-  const t = new Date(`${van}T12:00:00`).toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' })
-  return t.charAt(0).toUpperCase() + t.slice(1)
+const dagnaam = (d: string) => {
+  const n = new Date(`${d}T12:00:00`).toLocaleDateString('nl-NL', { weekday: 'long' })
+  return n.charAt(0).toUpperCase() + n.slice(1)
 }
-
+const datumKort = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' })
 const tijd = (t: string) => t.slice(0, 5)
-const korteDatum = (d: string) =>
-  new Date(`${d}T12:00:00`).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' })
 const getal = (n: number) => n.toLocaleString('nl-NL', { maximumFractionDigits: 2 })
+const minuten = (t: string) => {
+  const [u, m] = t.split(':').map(Number)
+  return u * 60 + m
+}
+
+interface Concept {
+  id: string
+  begintijd: string
+  eindtijd: string
+  pauze: string
+  opmerking: string
+}
+
+function berekend(c: Concept): number | null {
+  if (!c.begintijd || !c.eindtijd) return null
+  const netto = minuten(c.eindtijd) - minuten(c.begintijd) - (Number(c.pauze) || 0)
+  return netto > 0 ? netto / 60 : null
+}
 
 // Een apart bestand met de uren, dat Excel en Google Sheets goed openen.
 function urenNaarCsv(regels: Werkuren[], naam: (id: string) => string): string {
   const veld = (v: string) => (/[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
   const rijen = [
-    ['Datum', 'Week', 'Medewerker', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd'],
+    ['Week', 'Dag', 'Datum', 'Medewerker', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd'],
     ...regels.map((r) => [
+      String(weeknummer(r.datum)[0]),
+      dagnaam(r.datum),
       r.datum.split('-').reverse().join('-'),
-      String(weeknummer(r.datum)),
       naam(r.medewerker_id),
       tijd(r.begintijd),
       tijd(r.eindtijd),
@@ -80,20 +95,22 @@ function downloaden(bestandsnaam: string, inhoud: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-const leegFormulier = () => ({ id: '', datum: vandaag(), begintijd: '', eindtijd: '', pauze: '30', opmerking: '', medewerker_id: '' })
-
 export default function Uren() {
   const { medewerker: ik, isBeheerder } = useAuth()
-  const [periode, setPeriode] = useState<Periode>('week')
   const [rond, setRond] = useState(vandaag())
-  const [wie, setWie] = useState('') // leeg: iedereen (alleen beheerder)
-  const [regels, setRegels] = useState<Werkuren[] | null>(null)
+  // Wiens week je bekijkt. Invullen kan alleen in je eigen week.
+  const [wie, setWie] = useState('')
   const [medewerkers, setMedewerkers] = useState<Medewerker[]>([])
-  const [form, setForm] = useState(leegFormulier)
-  const [fout, setFout] = useState('')
-  const [bezig, setBezig] = useState(false)
+  const [regels, setRegels] = useState<Werkuren[] | null>(null)
+  const [alleRegels, setAlleRegels] = useState<Werkuren[]>([])
+  const [concepten, setConcepten] = useState<Record<string, Concept>>({})
+  const [fout, setFout] = useState<Record<string, string>>({})
+  const [bezig, setBezig] = useState('')
 
-  const [van, tot] = periodeGrenzen(periode, rond)
+  const dagen = useMemo(() => weekdagen(rond), [rond])
+  const [weeknr, jaar] = weeknummer(dagen[0])
+  const persoon = wie || ik?.id || ''
+  const eigen = persoon === ik?.id
 
   useEffect(() => {
     if (!isBeheerder) return
@@ -105,21 +122,22 @@ export default function Uren() {
   }, [isBeheerder])
 
   const laad = useCallback(async () => {
-    let vraag = supabase
+    if (!persoon) return
+    const { data } = await supabase
       .from('werkuren')
       .select('*')
-      .gte('datum', van)
-      .lte('datum', tot)
+      .gte('datum', dagen[0])
+      .lte('datum', dagen[6])
       .order('datum')
       .order('begintijd')
-    if (!isBeheerder && ik) vraag = vraag.eq('medewerker_id', ik.id)
-    else if (wie) vraag = vraag.eq('medewerker_id', wie)
-    const { data, error } = await vraag
-    if (error) setFout('Uren ophalen lukte niet.')
-    setRegels((data as Werkuren[]) ?? [])
-  }, [van, tot, wie, isBeheerder, ik])
+    const alles = (data as Werkuren[]) ?? []
+    setAlleRegels(alles)
+    setRegels(alles.filter((r) => r.medewerker_id === persoon))
+  }, [dagen, persoon])
 
   useEffect(() => {
+    setConcepten({})
+    setFout({})
     void laad()
   }, [laad])
 
@@ -128,63 +146,68 @@ export default function Uren() {
     [ik, medewerkers],
   )
 
-  const totalen = useMemo(() => {
-    const per = new Map<string, number>()
-    for (const r of regels ?? []) per.set(r.medewerker_id, (per.get(r.medewerker_id) ?? 0) + Number(r.uren))
-    return [...per.entries()].map(([id, uren]) => ({ id, uren })).sort((a, b) => naam(a.id).localeCompare(naam(b.id)))
-  }, [regels, naam])
+  const perDag = useMemo(() => {
+    const m = new Map<string, Werkuren>()
+    for (const r of regels ?? []) if (!m.has(r.datum)) m.set(r.datum, r)
+    return m
+  }, [regels])
 
-  async function opslaan(e: FormEvent) {
-    e.preventDefault()
-    setFout('')
-    if (form.eindtijd <= form.begintijd) {
-      setFout('De eindtijd moet na de begintijd liggen.')
+  const totaal = (regels ?? []).reduce((som, r) => som + Number(r.uren), 0)
+
+  function invullen(dag: string) {
+    const r = perDag.get(dag)
+    setConcepten({
+      ...concepten,
+      [dag]: r
+        ? { id: r.id, begintijd: tijd(r.begintijd), eindtijd: tijd(r.eindtijd), pauze: String(r.pauze_minuten), opmerking: r.opmerking ?? '' }
+        : { id: '', ...STANDAARD, opmerking: '' },
+    })
+  }
+
+  function wijzigConcept(dag: string, wijziging: Partial<Concept>) {
+    setConcepten({ ...concepten, [dag]: { ...concepten[dag], ...wijziging } })
+  }
+
+  function sluit(dag: string) {
+    const rest = { ...concepten }
+    delete rest[dag]
+    setConcepten(rest)
+    setFout({ ...fout, [dag]: '' })
+  }
+
+  async function opslaan(dag: string) {
+    const c = concepten[dag]
+    if (!c.begintijd || !c.eindtijd || c.eindtijd <= c.begintijd) {
+      setFout({ ...fout, [dag]: 'De eindtijd moet na de begintijd liggen.' })
       return
     }
-    const pauze = Math.max(0, Math.round(Number(form.pauze) || 0))
-    const [bu, bm] = form.begintijd.split(':').map(Number)
-    const [eu, em] = form.eindtijd.split(':').map(Number)
-    if (eu * 60 + em - (bu * 60 + bm) <= pauze) {
-      setFout('De pauze is langer dan de werktijd.')
+    if (berekend(c) === null) {
+      setFout({ ...fout, [dag]: 'De pauze is langer dan de werktijd.' })
       return
     }
-    setBezig(true)
-    const rij = {
-      id: form.id || crypto.randomUUID(),
-      datum: form.datum,
-      begintijd: form.begintijd,
-      eindtijd: form.eindtijd,
-      pauze_minuten: pauze,
-      opmerking: form.opmerking.trim() || null,
-      medewerker_id: (isBeheerder && form.medewerker_id) || (form.id ? undefined : ik?.id),
-    }
-    const { error } = await supabase.from('werkuren').upsert(rij)
-    setBezig(false)
+    setBezig(dag)
+    const { error } = await supabase.from('werkuren').upsert({
+      id: c.id || crypto.randomUUID(),
+      datum: dag,
+      begintijd: c.begintijd,
+      eindtijd: c.eindtijd,
+      pauze_minuten: Math.max(0, Math.round(Number(c.pauze) || 0)),
+      opmerking: c.opmerking.trim() || null,
+    })
+    setBezig('')
     if (error) {
-      setFout('Opslaan lukte niet. Controleer je internet en probeer het opnieuw.')
+      setFout({ ...fout, [dag]: 'Opslaan lukte niet. Controleer je internet en probeer het opnieuw.' })
       return
     }
-    setForm({ ...leegFormulier(), datum: form.datum, medewerker_id: form.medewerker_id })
-    setRond(form.datum)
+    sluit(dag)
     void laad()
   }
 
-  function aanpassen(r: Werkuren) {
-    setForm({
-      id: r.id,
-      datum: r.datum,
-      begintijd: tijd(r.begintijd),
-      eindtijd: tijd(r.eindtijd),
-      pauze: String(r.pauze_minuten),
-      opmerking: r.opmerking ?? '',
-      medewerker_id: r.medewerker_id,
-    })
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
-  async function verwijderen(r: Werkuren) {
-    if (!confirm(`Uren van ${toonDatum(r.datum)} verwijderen?`)) return
+  async function wissen(dag: string) {
+    const r = perDag.get(dag)
+    if (!r || !confirm(`Uren van ${dagnaam(dag).toLowerCase()} ${datumKort(dag)} wissen?`)) return
     await supabase.from('werkuren').delete().eq('id', r.id)
+    sluit(dag)
     void laad()
   }
 
@@ -194,136 +217,143 @@ export default function Uren() {
     void laad()
   }
 
-  const magWijzigen = (r: Werkuren) => isBeheerder || !r.goedgekeurd
   const open = (regels ?? []).filter((r) => !r.goedgekeurd).map((r) => r.id)
+  const weekTotalen = useMemo(() => {
+    const per = new Map<string, number>()
+    for (const r of alleRegels) per.set(r.medewerker_id, (per.get(r.medewerker_id) ?? 0) + Number(r.uren))
+    return [...per.entries()].sort((a, b) => naam(a[0]).localeCompare(naam(b[0])))
+  }, [alleRegels, naam])
 
   return (
-    <main className="pagina breed">
+    <main className="pagina">
       <h1>Urenregistratie</h1>
-      <p className="klein">
-        Vul per werkdag in hoe laat je begon en stopte, en hoe lang je pauze had. Dit staat los van de uren bij de klanten.
-      </p>
 
-      <form onSubmit={opslaan} className="formulier urenformulier">
-        <h2>{form.id ? 'Uren aanpassen' : 'Uren invullen'}</h2>
-        {isBeheerder && (
-          <label>
-            Medewerker
-            <select value={form.medewerker_id || ik?.id || ''} onChange={(e) => setForm({ ...form, medewerker_id: e.target.value })}>
-              {medewerkers.filter((m) => m.actief || m.id === form.medewerker_id).map((m) => (
-                <option key={m.id} value={m.id}>{m.naam}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label>Datum<input type="date" required value={form.datum} onChange={(e) => setForm({ ...form, datum: e.target.value })} /></label>
-        <div className="drie">
-          <label>Begin<input type="time" required value={form.begintijd} onChange={(e) => setForm({ ...form, begintijd: e.target.value })} /></label>
-          <label>Eind<input type="time" required value={form.eindtijd} onChange={(e) => setForm({ ...form, eindtijd: e.target.value })} /></label>
-          <label>Pauze (min)<input type="number" inputMode="numeric" min="0" step="5" value={form.pauze} onChange={(e) => setForm({ ...form, pauze: e.target.value })} /></label>
-        </div>
-        <label>Opmerking<input value={form.opmerking} placeholder="Bijvoorbeeld: werkplaats, vrachtwagen ophalen" onChange={(e) => setForm({ ...form, opmerking: e.target.value })} /></label>
-        {fout && <p className="fout">{fout}</p>}
-        <div className="rij knoppen">
-          <button disabled={bezig}>{bezig ? 'Bezig…' : 'Opslaan'}</button>
-          {form.id && <button type="button" className="link" onClick={() => setForm(leegFormulier())}>Annuleren</button>}
-        </div>
-      </form>
-
-      <h2>{periodeTitel(periode, van)}</h2>
-      <div className="rij knoppen urenbalk">
-        <div className="rij">
-          <button type="button" className="link" onClick={() => setRond(verschuif(periode, rond, -1))}>← Vorige</button>
-          <button type="button" className="link" onClick={() => setRond(vandaag())}>Nu</button>
-          <button type="button" className="link" onClick={() => setRond(verschuif(periode, rond, 1))}>Volgende →</button>
-        </div>
-        <div className="rij">
-          <select value={periode} onChange={(e) => setPeriode(e.target.value as Periode)}>
-            <option value="week">Per week</option>
-            <option value="maand">Per maand</option>
+      {isBeheerder && (
+        <label className="formulier">
+          <span className="klein">Week bekijken van</span>
+          <select value={persoon} onChange={(e) => setWie(e.target.value)}>
+            {medewerkers.filter((m) => m.actief || m.id === persoon).map((m) => (
+              <option key={m.id} value={m.id}>{m.naam}{m.id === ik?.id ? ' (ik)' : ''}</option>
+            ))}
           </select>
-          {isBeheerder && (
-            <select value={wie} onChange={(e) => setWie(e.target.value)}>
-              <option value="">Iedereen</option>
-              {medewerkers.map((m) => <option key={m.id} value={m.id}>{m.naam}</option>)}
-            </select>
-          )}
+        </label>
+      )}
+
+      <div className="weekkop">
+        <button type="button" className="link" onClick={() => setRond(verschuif(rond, -1))} aria-label="Vorige week">←</button>
+        <div>
+          <h2>Week {weeknr}</h2>
+          <span className="klein">{datumKort(dagen[0])} – {datumKort(dagen[6])} {jaar}</span>
         </div>
+        <button type="button" className="link" onClick={() => setRond(verschuif(rond, 1))} aria-label="Volgende week">→</button>
       </div>
+      {!dagen.includes(vandaag()) && (
+        <p className="midden"><button type="button" className="link" onClick={() => setRond(vandaag())}>Naar deze week</button></p>
+      )}
 
       {regels === null ? (
         <p>Laden…</p>
-      ) : regels.length === 0 ? (
-        <p>Geen uren in deze periode.</p>
       ) : (
-        <>
-          <div className="opbouw">
-            <table className="tabel">
-              <thead>
-                <tr>
-                  <th>Datum</th>
-                  {isBeheerder && <th>Medewerker</th>}
-                  <th>Tijd</th>
-                  <th className="verberg-smal">Pauze</th>
-                  <th>Uren</th>
-                  <th className="verberg-smal">Opmerking</th>
-                  <th title="Goedgekeurd">Akkoord</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {regels.map((r) => (
-                  <tr key={r.id}>
-                    <td className="nowrap">{korteDatum(r.datum)}</td>
-                    {isBeheerder && <td>{naam(r.medewerker_id)}</td>}
-                    <td className="nowrap">{tijd(r.begintijd)}–{tijd(r.eindtijd)}</td>
-                    <td className="verberg-smal">{r.pauze_minuten} min</td>
-                    <td>{getal(Number(r.uren))}</td>
-                    <td className="verberg-smal">{r.opmerking}</td>
-                    <td>
+        <ul className="weekdagen">
+          {dagen.map((dag) => {
+            const r = perDag.get(dag)
+            const c = concepten[dag]
+            const vandaagDag = dag === vandaag()
+            return (
+              <li key={dag} className={`weekdag${vandaagDag ? ' vandaag' : ''}${!r && !c ? ' leeg' : ''}`}>
+                <div className="dagkop">
+                  <div>
+                    <strong>{dagnaam(dag)}</strong> <span className="klein">{datumKort(dag)}</span>
+                  </div>
+                  {r && !c && <strong>{toonUren(Number(r.uren))}</strong>}
+                  {c && berekend(c) !== null && <strong>{toonUren(berekend(c)!)}</strong>}
+                </div>
+
+                {c ? (
+                  <div className="formulier">
+                    <div className="drie">
+                      <label>Begin<input type="time" value={c.begintijd} onChange={(e) => wijzigConcept(dag, { begintijd: e.target.value })} /></label>
+                      <label>Eind<input type="time" value={c.eindtijd} onChange={(e) => wijzigConcept(dag, { eindtijd: e.target.value })} /></label>
+                      <label>Pauze (min)<input type="number" inputMode="numeric" min="0" step="5" value={c.pauze} onChange={(e) => wijzigConcept(dag, { pauze: e.target.value })} /></label>
+                    </div>
+                    <label>Opmerking<input value={c.opmerking} placeholder="Niet verplicht" onChange={(e) => wijzigConcept(dag, { opmerking: e.target.value })} /></label>
+                    {fout[dag] && <p className="fout">{fout[dag]}</p>}
+                    <div className="rij knoppen">
+                      <button disabled={bezig === dag} onClick={() => opslaan(dag)}>{bezig === dag ? 'Bezig…' : 'Opslaan'}</button>
+                      <span className="rij">
+                        {r && <button className="link gevaar" onClick={() => wissen(dag)}>Wissen</button>}
+                        <button className="link" onClick={() => sluit(dag)}>Annuleren</button>
+                      </span>
+                    </div>
+                  </div>
+                ) : r ? (
+                  <div className="rij knoppen">
+                    <span>
+                      {tijd(r.begintijd)} – {tijd(r.eindtijd)}, {r.pauze_minuten} min pauze
+                      {r.opmerking && <span className="klein"> · {r.opmerking}</span>}
+                    </span>
+                    <span className="rij">
                       {isBeheerder ? (
-                        <input type="checkbox" checked={r.goedgekeurd} onChange={(e) => goedkeuren([r.id], e.target.checked)} />
-                      ) : r.goedgekeurd ? '✓' : '–'}
-                    </td>
-                    <td>
-                      {magWijzigen(r) && (
-                        <span className="rij">
-                          <button className="link" onClick={() => aanpassen(r)}>Wijzig</button>
-                          <button className="link gevaar" onClick={() => verwijderen(r)}>Wis</button>
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        <label className="vinkje"><input type="checkbox" checked={r.goedgekeurd} onChange={(e) => goedkeuren([r.id], e.target.checked)} /> Akkoord</label>
+                      ) : r.goedgekeurd ? (
+                        <span className="klein">✓ Goedgekeurd</span>
+                      ) : null}
+                      {eigen && (isBeheerder || !r.goedgekeurd) && <button className="link" onClick={() => invullen(dag)}>Wijzigen</button>}
+                    </span>
+                  </div>
+                ) : eigen ? (
+                  <button className="link" onClick={() => invullen(dag)}>+ Uren invullen</button>
+                ) : (
+                  <span className="klein">Niet ingevuld</span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
 
-          <div className="controle">
-            <strong>Totaal</strong>
-            <ul>
-              {totalen.map((t) => <li key={t.id}>{isBeheerder ? `${naam(t.id)}: ` : ''}{toonUren(t.uren)}</li>)}
-            </ul>
-          </div>
+      <div className="controle rij knoppen">
+        <strong>Totaal week {weeknr}</strong>
+        <strong>{toonUren(totaal)}</strong>
+      </div>
 
-          <div className="rij knoppen">
+      <div className="rij knoppen">
+        <button
+          type="button"
+          disabled={!regels?.length}
+          onClick={() => downloaden(`Uren week ${weeknr} ${jaar} ${naam(persoon)}.csv`, urenNaarCsv(regels ?? [], naam))}
+        >
+          Week downloaden
+        </button>
+        {isBeheerder && open.length > 0 && (
+          <button type="button" className="link" onClick={() => goedkeuren(open, true)}>
+            Hele week goedkeuren ({open.length})
+          </button>
+        )}
+      </div>
+
+      {isBeheerder && weekTotalen.length > 0 && (
+        <>
+          <h2>Iedereen in week {weeknr}</h2>
+          <table className="tabel">
+            <tbody>
+              {weekTotalen.map(([id, uren]) => (
+                <tr key={id}>
+                  <td><button className="link" onClick={() => setWie(id)}>{naam(id)}</button></td>
+                  <td>{toonUren(uren)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p>
             <button
               type="button"
-              onClick={() =>
-                downloaden(
-                  `Uren ${periodeTitel(periode, van)}${isBeheerder && wie ? ` ${naam(wie)}` : !isBeheerder && ik ? ` ${ik.naam}` : ''}.csv`,
-                  urenNaarCsv(regels, naam),
-                )
-              }
+              className="link"
+              onClick={() => downloaden(`Uren week ${weeknr} ${jaar} iedereen.csv`, urenNaarCsv(alleRegels, naam))}
             >
-              Downloaden als bestand
+              Week van iedereen downloaden
             </button>
-            {isBeheerder && open.length > 0 && (
-              <button type="button" className="link" onClick={() => goedkeuren(open, true)}>
-                Alles in deze {periode} goedkeuren ({open.length})
-              </button>
-            )}
-          </div>
+          </p>
         </>
       )}
     </main>

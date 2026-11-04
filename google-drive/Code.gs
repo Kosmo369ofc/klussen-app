@@ -135,10 +135,12 @@ function schrijfUren(hoofdmap, uren, namen) {
   const tabs = blad.getSheets()
   const alle = tabs[0]
   const perWeek = tabs[1] || blad.insertSheet('Per week')
-  const kop = ['Datum', 'Week', 'Medewerker', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
+  const kop = ['Week', 'Dag', 'Datum', 'Medewerker', 'Begin', 'Eind', 'Pauze (min)', 'Uren', 'Opmerking', 'Goedgekeurd']
+  const dagen = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
   const rijen = uren.map((u) => [
-    new Date(`${u.datum}T12:00:00`),
     weeknummer(u.datum),
+    dagen[new Date(`${u.datum}T12:00:00`).getDay()],
+    new Date(`${u.datum}T12:00:00`),
     namen[u.medewerker_id] || '?',
     String(u.begintijd).slice(0, 5),
     String(u.eindtijd).slice(0, 5),
@@ -153,7 +155,7 @@ function schrijfUren(hoofdmap, uren, namen) {
   alle.setFrozenRows(1)
   if (rijen.length) {
     alle.getRange(2, 1, rijen.length, kop.length).setValues(rijen)
-    alle.getRange(2, 1, rijen.length, 1).setNumberFormat('dd-mm-yyyy')
+    alle.getRange(2, 3, rijen.length, 1).setNumberFormat('dd-mm-yyyy')
   }
 
   // Totaal per medewerker per week, nieuwste week bovenaan.
