@@ -5,6 +5,9 @@
 // Zie google-drive/LEESMIJ.md voor het installeren in het Google-account van
 // de beheerder.
 
+// Je hoeft dit maar één keer in te vullen. Bij de eerste keer uitvoeren
+// onthoudt het script de waarden zelf (in de Scripteigenschappen). Plak je
+// later een nieuwe versie van deze code, dan mag je dit gewoon leeg laten.
 const INSTELLINGEN = {
   // Supabase > Project Settings > API (of Data API): Project URL.
   SUPABASE_URL: 'https://JOUWPROJECT.supabase.co',
@@ -24,6 +27,22 @@ const INSTELLINGEN = {
 const MAX_DUUR_MS = 4.5 * 60 * 1000
 
 const eigenschappen = () => PropertiesService.getScriptProperties()
+
+// Een ingevulde waarde bovenaan wordt onthouden; een lege of voorbeeldwaarde
+// betekent: gebruik wat eerder is onthouden.
+function instelling(naam) {
+  const waarde = String(INSTELLINGEN[naam] || '').trim()
+  const ingevuld = waarde && !/JOUWPROJECT|PLAK_HIER/.test(waarde)
+  if (ingevuld) {
+    if (eigenschappen().getProperty(naam) !== waarde) eigenschappen().setProperty(naam, waarde)
+    return waarde
+  }
+  const onthouden = eigenschappen().getProperty(naam)
+  if (onthouden !== null) return onthouden
+  if (naam === 'MAP_ID') return ''
+  if (naam === 'HOOFDMAP') return 'Klussen-app'
+  throw new Error(`Vul bovenaan bij INSTELLINGEN eerst ${naam} in en voer het script opnieuw uit.`)
+}
 
 // Eén keer uitvoeren: daarna werkt het script elk uur alles bij.
 function elkUurBijwerken() {
@@ -48,8 +67,8 @@ function bijwerken() {
       'bezoekregels(omschrijving,hoeveelheid,werkzaamheid_id),bezoek_fotos(id,pad)&order=datum.desc,aangemaakt_op.desc',
   )
 
-  const plek = INSTELLINGEN.MAP_ID ? DriveApp.getFolderById(INSTELLINGEN.MAP_ID) : DriveApp.getRootFolder()
-  const hoofdmap = vindOfMaakMap('hoofdmap', plek, INSTELLINGEN.HOOFDMAP)
+  const plek = instelling('MAP_ID') ? DriveApp.getFolderById(instelling('MAP_ID')) : DriveApp.getRootFolder()
+  const hoofdmap = vindOfMaakMap('hoofdmap', plek, instelling('HOOFDMAP'))
   const fotoTaken = []
   for (const klant of klanten) {
     const eigen = bezoeken.filter((b) => b.klant_id === klant.id)
@@ -84,7 +103,7 @@ function bijwerken() {
       overgeslagen++
       continue
     }
-    const antwoord = UrlFetchApp.fetch(`${INSTELLINGEN.SUPABASE_URL}/storage/v1/object/authenticated/fotos/${t.pad}`, {
+    const antwoord = UrlFetchApp.fetch(`${instelling('SUPABASE_URL')}/storage/v1/object/authenticated/fotos/${t.pad}`, {
       headers: kop(token),
       muteHttpExceptions: true,
     })
@@ -332,11 +351,11 @@ function bestandsnaam(naam) {
 function inloggen() {
   const wachtwoord = eigenschappen().getProperty('WACHTWOORD')
   if (!wachtwoord) throw new Error('Zet eerst het wachtwoord bij Projectinstellingen > Scripteigenschappen > WACHTWOORD.')
-  const antwoord = UrlFetchApp.fetch(`${INSTELLINGEN.SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+  const antwoord = UrlFetchApp.fetch(`${instelling('SUPABASE_URL')}/auth/v1/token?grant_type=password`, {
     method: 'post',
     contentType: 'application/json',
-    headers: { apikey: INSTELLINGEN.SUPABASE_SLEUTEL },
-    payload: JSON.stringify({ email: INSTELLINGEN.EMAIL, password: wachtwoord }),
+    headers: { apikey: instelling('SUPABASE_SLEUTEL') },
+    payload: JSON.stringify({ email: instelling('EMAIL'), password: wachtwoord }),
     muteHttpExceptions: true,
   })
   if (antwoord.getResponseCode() !== 200) {
@@ -346,14 +365,14 @@ function inloggen() {
 }
 
 function kop(token) {
-  return { apikey: INSTELLINGEN.SUPABASE_SLEUTEL, Authorization: `Bearer ${token}` }
+  return { apikey: instelling('SUPABASE_SLEUTEL'), Authorization: `Bearer ${token}` }
 }
 
 // Haalt alle rijen op, 1000 per keer.
 function haalAlles(token, pad) {
   const alles = []
   for (let vanaf = 0; ; vanaf += 1000) {
-    const antwoord = UrlFetchApp.fetch(`${INSTELLINGEN.SUPABASE_URL}/rest/v1/${pad}&limit=1000&offset=${vanaf}`, {
+    const antwoord = UrlFetchApp.fetch(`${instelling('SUPABASE_URL')}/rest/v1/${pad}&limit=1000&offset=${vanaf}`, {
       headers: kop(token),
       muteHttpExceptions: true,
     })

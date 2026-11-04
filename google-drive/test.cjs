@@ -46,6 +46,7 @@ const ctx = {
 }
 vm.createContext(ctx)
 vm.runInContext(fs.readFileSync(require('path').join(__dirname, 'Code.gs'), 'utf8').replace(/^const /gm, 'var '), ctx)
+vm.runInContext(`INSTELLINGEN.SUPABASE_URL = 'https://test.supabase.co'; INSTELLINGEN.SUPABASE_SLEUTEL = 'sleutel'`, ctx)
 const ok = (l, v) => { console.log(v ? 'OK  ' : 'FOUT', l); if (!v) process.exitCode = 1 }
 try { ctx.bijwerken(); ok('zonder wachtwoord een fout', false) } catch (e) { ok('zonder wachtwoord een duidelijke fout', /WACHTWOORD/.test(e.message)) }
 props.WACHTWOORD = 'geheim'
@@ -81,6 +82,12 @@ ctx.bijwerken()
 ok('tabblad hernoemd, niet dubbel', uren.tabs.length === 4 && uren.tabs[3].naam === 'Jan de Vries')
 ok('map hernoemd', carin.naam === 'Carin Bodewes-Jansen' && blad.naam === 'Beurten Carin Bodewes-Jansen')
 ok('foto niet dubbel', fotomap.files.length === 1)
+// Nieuwe versie geplakt met lege instellingen: de onthouden waarden blijven gelden.
+ok('instellingen onthouden', props.SUPABASE_URL === vm.runInContext('INSTELLINGEN.SUPABASE_URL', ctx) && props.EMAIL === 'info@darnevieldienstverlening.nl')
+vm.runInContext(`INSTELLINGEN.SUPABASE_URL = 'https://JOUWPROJECT.supabase.co'; INSTELLINGEN.SUPABASE_SLEUTEL = ''; INSTELLINGEN.EMAIL = ''`, ctx)
+const voor = aanroepen.length
+ctx.bijwerken()
+ok('werkt met lege instellingen na opnieuw plakken', aanroepen.length > voor && aanroepen.slice(voor).every((u) => u.startsWith(props.SUPABASE_URL)))
 // In een map in de gezamenlijke drive.
 const gedeeld = folder('Gedeelde drive')
 vm.runInContext(`INSTELLINGEN.MAP_ID = '${gedeeld.id}'`, ctx)
