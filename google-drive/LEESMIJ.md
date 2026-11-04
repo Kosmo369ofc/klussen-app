@@ -49,8 +49,10 @@ gezamenlijke drive, zodat iedereen die daar toegang heeft hem ziet.
 
 ## Goed om te weten
 
-- Nieuwe versie van `Code.gs`? Plak hem opnieuw in het script (alles vervangen) en vul `INSTELLINGEN`
-  weer in zoals eerst. De rest (wachtwoord, trigger) blijft staan.
+- Nieuwe versie van `Code.gs`? Vervang alles in het script door de nieuwe code, sla op en klaar.
+  Het script onthoudt de instellingen van de eerste keer, dus `INSTELLINGEN` mag dan leeg blijven.
+  Een waarde die je daar wel invult, vervangt de onthouden waarde. Ze staan onder
+  **Projectinstellingen > Scripteigenschappen**, naast `WACHTWOORD`.
 
 - Wil je meteen bijwerken? Kies de functie **bijwerken** en klik op **Uitvoeren**.
 - Wordt het wachtwoord in de app veranderd, pas dan ook `WACHTWOORD` in de scripteigenschappen aan.
