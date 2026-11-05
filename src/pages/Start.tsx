@@ -46,14 +46,18 @@ export default function Start() {
   const laad = useCallback(async () => {
     if (!ik) return
     const [k, r, km] = await Promise.all([
-      supabase.from('ingeklokt').select('*').maybeSingle(),
+      // Alleen je eigen klok: de beheerder mag die van iedereen lezen.
+      supabase.from('ingeklokt').select('*').eq('medewerker_id', ik.id).maybeSingle(),
       supabase.from('werkuren').select('*').eq('medewerker_id', ik.id).eq('datum', vandaag()).order('begintijd'),
       supabase.from('dagkilometers').select('*').eq('medewerker_id', ik.id).order('datum', { ascending: false }).limit(1).maybeSingle(),
     ])
     setKmRij(km.error ? undefined : ((km.data as Dagkilometers | null) ?? null))
     // Bestaat de tabel nog niet (SQL nog niet gedraaid), dan kan er niet geklokt worden.
-    setNietKlaar(!!k.error)
-    setKlok(k.error ? null : ((k.data as Ingeklokt | null) ?? null))
+    // Bij een andere fout (bijv. even geen internet) gewoon opnieuw proberen.
+    const ontbreekt = !!k.error && ['42P01', 'PGRST205', 'PGRST202'].includes(k.error.code)
+    setNietKlaar(ontbreekt)
+    if (k.error && !ontbreekt) setFout('De klok kon niet worden geladen. Controleer je internet en probeer het opnieuw.')
+    else setKlok((k.data as Ingeklokt | null) ?? null)
     setRegels((r.data as Werkuren[]) ?? [])
     setNu(Date.now())
   }, [ik])
@@ -200,7 +204,13 @@ export default function Start() {
 
       {nietKlaar ? (
         <p className="melding">Klokken kan nog niet: de database moet nog worden bijgewerkt. Vul je uren in bij <Link to="/uren">Uren invullen</Link>.</p>
-      ) : klok === undefined ? null : !klok ? (
+      ) : klok === undefined ? (
+        fout ? (
+          <p className="fout">
+            {fout} <button className="link" onClick={() => void laad()}>Opnieuw proberen</button>
+          </p>
+        ) : null
+      ) : !klok ? (
         <section className="klokvak">
           <strong>{regels.length ? 'Weer verder?' : 'Klaar om te beginnen?'}</strong>
           {kmRij !== undefined && kmVandaag?.beginstand == null && standVeld('Kilometerstand bus (begin)')}
