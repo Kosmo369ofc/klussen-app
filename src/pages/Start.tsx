@@ -12,6 +12,8 @@ import Busje from '../Busje'
 interface KlantKort {
   id: string
   naam: string
+  // Uit = niet in het keuzemenu (beheerder zet dit in de klantenlijst).
+  kiesbaar_bij_klokken?: boolean
 }
 
 const kloktijd = (d: Date) => d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
@@ -66,7 +68,7 @@ export default function Start() {
     void laad()
     supabase
       .from('klanten')
-      .select('id, naam')
+      .select('*')
       .eq('actief', true)
       .order('naam')
       .then(({ data }) => setKlanten((data as KlantKort[]) ?? []))
@@ -149,7 +151,7 @@ export default function Start() {
   const klantKeuze = (
     <select value={klant} onChange={(e) => setKlant(e.target.value)} aria-label="Klant">
       <option value="">Geen klant (algemeen werk)</option>
-      {klanten.map((k) => <option key={k.id} value={k.id}>{k.naam}</option>)}
+      {klanten.filter((k) => k.kiesbaar_bij_klokken !== false).map((k) => <option key={k.id} value={k.id}>{k.naam}</option>)}
     </select>
   )
 
