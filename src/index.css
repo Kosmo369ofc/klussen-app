@@ -270,3 +270,15 @@ button.knop-uitloggen:hover { background: #efd3d0; }
 @media (prefers-reduced-motion: reduce) {
   .menuscherm, .menuscherm .tegel, .menuscherm .knop-uitloggen, .overgang { animation: none; }
 }
+
+/* Overzicht: klant en "weer nodig" als zachte knoppen, kleur naar urgentie (optie D). */
+.overzicht td { vertical-align: middle; }
+.pil { display: inline-block; border-radius: 10px; padding: 6px 12px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.legenda .pil { font-size: 0.8rem; padding: 3px 9px; margin: 2px 0; }
+.klantpil { background: #e4ebe2; color: #2f4a31; white-space: normal; }
+.klantpil:hover { background: #d6e1d3; }
+.pil.rood { background: #f4d3d0; color: #8a2420; }
+.pil.oranje { background: #f8e0c6; color: #7a4300; }
+.pil.geel { background: #f3ecc4; color: #625400; }
+.pil.groen { background: #e4ebe2; color: #2f4a31; }
+.pil.grijs { background: #efede6; color: #6b6e62; }
