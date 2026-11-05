@@ -13,6 +13,8 @@ const PAUZE = 60
 interface KlantKort {
   id: string
   naam: string
+  // Uit = niet in het keuzemenu (beheerder zet dit in de klantenlijst).
+  kiesbaar_bij_klokken?: boolean
 }
 
 function iso(d: Date): string {
@@ -164,7 +166,7 @@ export default function Uren() {
   useEffect(() => {
     supabase
       .from('klanten')
-      .select('id, naam')
+      .select('*')
       .eq('actief', true)
       .order('naam')
       .then(({ data }) => setKlanten((data as KlantKort[]) ?? []))
@@ -365,7 +367,9 @@ export default function Uren() {
           Klant
           <select value={c.klant_id} onChange={(e) => zet(sleutel, { ...c, klant_id: e.target.value })}>
             <option value="">Geen klant (algemeen werk)</option>
-            {klanten.map((k) => <option key={k.id} value={k.id}>{k.naam}</option>)}
+            {klanten
+              .filter((k) => k.kiesbaar_bij_klokken !== false || k.id === c.klant_id)
+              .map((k) => <option key={k.id} value={k.id}>{k.naam}</option>)}
           </select>
         </label>
         <label>Opmerking<input value={c.opmerking} placeholder="Niet verplicht" onChange={(e) => zet(sleutel, { ...c, opmerking: e.target.value })} /></label>

@@ -20,6 +20,8 @@ export interface Klant {
   contractvorm: Contractvorm
   notities: string | null
   actief: boolean
+  // Staat de klant in het keuzemenu bij uren klokken? (0012)
+  kiesbaar_bij_klokken?: boolean
 }
 
 export interface Werkzaamheid {
