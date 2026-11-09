@@ -1,0 +1,73 @@
+# Elke nacht een versleutelde back-up van alle gegevens in de database (klanten, bezoeken, uren, ...).
+# De back-up staat 30 dagen bij deze workflow onder Actions > Database-back-up, als download.
+# Nodig (GitHub > Settings > Secrets and variables > Actions):
+#   SUPABASE_DB_URL     de verbindingslink van Supabase (Connect > Session pooler), met wachtwoord ingevuld
+#   BACKUP_WACHTWOORD   een lang wachtwoord om de back-up mee te versleutelen; bewaar het ook ergens veilig
+# Terugzetten: zie README, kopje "Back-up terugzetten".
+name: Database-back-up
+
+on:
+  schedule:
+    - cron: '30 2 * * *' # elke nacht rond half vier / half vijf Nederlandse tijd
+  workflow_dispatch: # ook met de hand te starten via de knop "Run workflow"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      WACHTWOORD: ${{ secrets.BACKUP_WACHTWOORD }}
+    steps:
+      - name: Controleren of alles is ingesteld
+        run: |
+          if [ -z "$DB_URL" ] || [ -z "$WACHTWOORD" ]; then
+            echo "::error::SUPABASE_DB_URL of BACKUP_WACHTWOORD ontbreekt bij Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          if [ "${#WACHTWOORD}" -lt 16 ]; then
+            echo "::error::BACKUP_WACHTWOORD is te kort; gebruik minstens 16 tekens."
+            exit 1
+          fi
+
+      - name: Postgres-gereedschap installeren
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Back-up maken en versleutelen
+        run: |
+          set -euo pipefail
+          naam="klussen-db-$(date -u +%Y-%m-%d)"
+          echo "NAAM=$naam" >> "$GITHUB_ENV"
+          mkdir "$naam"
+          # Opzet van de tabellen (ter controle) en de gegevens zelf (om terug te zetten), los van elkaar.
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" --schema=public --schema-only --no-owner \
+            --file="$naam/opzet.sql"
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" --schema=public --data-only --no-owner \
+            --file="$naam/gegevens.sql"
+          # Controle: een lege of mislukte back-up mag nooit stilletjes als gelukt tellen.
+          grep -q 'CREATE TABLE public.klanten' "$naam/opzet.sql" || { echo "::error::Back-up onvolledig: tabel klanten ontbreekt."; exit 1; }
+          grep -q 'COPY public.klanten' "$naam/gegevens.sql" || { echo "::error::Back-up bevat geen klantgegevens."; exit 1; }
+          du -h "$naam"/*
+          tar -czf back-up.tar.gz "$naam"
+          printf '%s' "$WACHTWOORD" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 --output "$naam.tar.gz.gpg" back-up.tar.gz
+          rm -rf back-up.tar.gz "$naam"
+
+      - name: Back-up bewaren (30 dagen)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAAM }}
+          path: ${{ env.NAAM }}.tar.gz.gpg
+          retention-days: 30
+          if-no-files-found: error
