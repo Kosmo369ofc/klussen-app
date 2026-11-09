@@ -95,6 +95,9 @@ export default function KlantBewerken() {
   const [contactpersoon, setContactpersoon] = useState('')
   const [notities, setNotities] = useState('')
   const [actief, setActief] = useState(true)
+  // Staat de klant in het keuzemenu bij uren klokken? (kolom uit 0012)
+  const [kiesbaar, setKiesbaar] = useState(true)
+  const [kiesbaarKolom, setKiesbaarKolom] = useState(false)
   const [contractvorm, setContractvorm] = useState<Contractvorm>('per_beurt')
   const [bedragen, setBedragen] = useState(leeg)
   const [periode, setPeriode] = useState<'maand' | 'jaar'>('maand')
@@ -125,6 +128,8 @@ export default function KlantBewerken() {
       setContactpersoon(k.contactpersoon ?? '')
       setNotities(k.notities ?? '')
       setActief(k.actief)
+      setKiesbaarKolom('kiesbaar_bij_klokken' in k)
+      setKiesbaar(k.kiesbaar_bij_klokken !== false)
       setContractvorm(k.contractvorm)
     })
     supabase.from('contracten').select('*').eq('klant_id', id).maybeSingle().then(async ({ data }) => {
@@ -224,6 +229,8 @@ export default function KlantBewerken() {
         notities: notities.trim() || null,
         actief,
         contractvorm,
+        // Alleen meesturen als de kolom bestaat (of als hij uit moet), anders faalt opslaan.
+        ...(kiesbaarKolom || !kiesbaar ? { kiesbaar_bij_klokken: kiesbaar } : {}),
       }
       const { data, error } = nieuw
         ? await supabase.from('klanten').insert(gegevens).select('id').single()
@@ -294,7 +301,12 @@ export default function KlantBewerken() {
       navigate(`/klanten/${klantId}`, { replace: true, state: { melding: 'Klant opgeslagen.' } })
     } catch (fout) {
       console.error(fout)
-      setFout('Opslaan lukte niet. Probeer het opnieuw.')
+      const tekst = fout && typeof fout === 'object' && 'message' in fout ? String(fout.message) : ''
+      setFout(
+        tekst.includes('kiesbaar')
+          ? '"Kiesbaar bij uren klokken" kan nog niet: de SQL-stap 0012 in Supabase is nog niet gedaan.'
+          : 'Opslaan lukte niet. Probeer het opnieuw.',
+      )
       setBezig(false)
     }
   }
@@ -596,6 +608,10 @@ export default function KlantBewerken() {
         <label className="vinkje">
           <input type="checkbox" checked={actief} onChange={(e) => setActief(e.target.checked)} />
           Actieve klant
+        </label>
+        <label className="vinkje">
+          <input type="checkbox" checked={kiesbaar} onChange={(e) => setKiesbaar(e.target.checked)} />
+          Kiesbaar bij uren klokken
         </label>
 
         {fout && <p className="fout">{fout}</p>}
