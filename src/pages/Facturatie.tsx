@@ -61,7 +61,7 @@ export default function Facturatie() {
   )
 
   return (
-    <main className="pagina breed">
+    <main className="pagina">
       <h1>Facturatie</h1>
       <div className="tabs">
         {(
