@@ -74,3 +74,43 @@ en de contracturen zien. Dit wordt in de database afgedwongen, niet alleen in de
 4. Zet in Supabase bij **Authentication > URL Configuration** de **Site URL** op het adres dat Netlify je geeft.
 
 Daarna zet Netlify elke wijziging op `main` vanzelf online.
+
+## Online zetten (Cloudflare Pages)
+
+De app staat op Cloudflare Pages en wordt bij elke wijziging op `main` vanzelf bijgewerkt.
+Elke pull request krijgt een eigen testlink, zodat je een wijziging kunt bekijken voordat je merget.
+
+Instellingen in Cloudflare (Workers & Pages > het project > Settings > Builds):
+
+- Build command: `npm run build`
+- Build output directory: `dist`
+- Environment variables (bij Production én Preview): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` en `NODE_VERSION` = `22`
+
+`public/_headers` regelt extra beveiliging en zorgt dat telefoons een nieuwe versie meteen ophalen.
+Pagina's als `/klanten/123` werken vanzelf, omdat Cloudflare zonder `404.html` alles naar de app stuurt.
+
+## Back-ups
+
+Elke nacht maakt de GitHub-workflow **Database-back-up** (`.github/workflows/database-backup.yml`) een
+versleutelde kopie van alle gegevens in de database. Die staat 30 dagen onder **Actions > Database-back-up**.
+Lukt een back-up niet, dan stuurt GitHub een e-mail. Foto's staan niet in de database maar in Supabase Storage;
+het Drive-script zet ze ook in Google Drive.
+
+### Back-up terugzetten
+
+1. Download de back-up bij **Actions > Database-back-up > (de nacht die je wilt) > Artifacts** en pak de zip uit.
+2. Ontsleutel en pak uit (vraagt om `BACKUP_WACHTWOORD`):
+   `gpg -d klussen-db-JJJJ-MM-DD.tar.gz.gpg | tar -xz`
+   Je krijgt een map met `opzet.sql` (de tabellen) en `gegevens.sql` (alle gegevens).
+3. Zorg dat de database de opzet heeft: bij een nieuw project eerst alle bestanden uit `supabase/migrations` uitvoeren (zie hierboven).
+4. Maak de tabellen leeg en zet de gegevens terug, in één keer (stopt bij de eerste fout, zodat er niets half gebeurt):
+   ```sh
+   psql "<verbindingslink>" -v ON_ERROR_STOP=1 --single-transaction \
+     -c "do \$\$ declare t text; begin for t in select tablename from pg_tables where schemaname = 'public' loop execute format('truncate table public.%I cascade', t); end loop; end \$\$;" \
+     -f gegevens.sql
+   ```
+   Bij een **nieuw** project bestaan de inlogaccounts nog niet. Voer dan vóór stap 4 in de SQL Editor uit:
+   `alter table medewerkers drop constraint medewerkers_user_id_fkey;`
+   en erna:
+   `update medewerkers set user_id = null; alter table medewerkers add constraint medewerkers_user_id_fkey foreign key (user_id) references auth.users (id) on delete set null;`
+   Medewerkers loggen dan opnieuw in met een code per e-mail en worden vanzelf weer aan hun gegevens gekoppeld.

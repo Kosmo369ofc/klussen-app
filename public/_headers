@@ -1,0 +1,20 @@
+# Extra beveiliging en slim bewaren in de browser (Cloudflare Pages en Netlify lezen dit bestand allebei).
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000
+
+# Deze bestanden altijd vers ophalen, zodat telefoons een nieuwe versie meteen zien.
+/index.html
+  Cache-Control: no-cache
+/sw.js
+  Cache-Control: no-cache
+/registerSW.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+
+# Bestanden met een code in de naam veranderen nooit; die mogen lang bewaard worden.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
