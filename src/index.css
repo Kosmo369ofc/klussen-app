@@ -62,7 +62,9 @@ button, .knop {
 }
 button:disabled { opacity: 0.6; }
 button.groot, .knop.groot { width: 100%; padding: 14px; font-size: 1.05rem; margin: 16px 0 4px; }
-button.link { background: none; color: var(--groen); padding: 4px 0; text-decoration: underline; }
+/* Losse acties en filterknoppen: witte knop met groene rand (keuze 3). De gekozen filter is donkergroen. */
+button.link { background: var(--kaart); color: var(--groen); border: 1.5px solid var(--groen); padding: 7px 16px; font-weight: 500; }
+button.link:hover { background: var(--groen-zacht); }
 
 .formulier { display: flex; flex-direction: column; gap: 14px; }
 .formulier label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; }
@@ -96,7 +98,6 @@ input[type='search'] { margin-bottom: 8px; }
 
 .wachtrij { background: #fff3cd; padding: 10px 16px; text-align: center; font-size: 0.95rem; }
 
-.pagina.breed { max-width: 1100px; }
 .twee { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 480px) { .twee { grid-template-columns: 1fr; } }
 .taakrij { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--rand); }
@@ -107,8 +108,8 @@ input[type='search'] { margin-bottom: 8px; }
 .afspraken ul { margin: 6px 0 0; padding-left: 20px; }
 .fotos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .fotos img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; display: block; }
-.tabs { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-.tabs button.actief { padding: 6px 12px; }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.tabs button.actief { border: 1.5px solid var(--groen); padding: 7px 16px; font-weight: 500; }
 .teller { background: var(--rood); color: white; border-radius: 99px; font-size: 0.75rem; padding: 1px 7px; margin-left: 4px; }
 
 /* Prijsopbouw en schema's */
@@ -117,7 +118,8 @@ input[type='search'] { margin-bottom: 8px; }
 .kort { width: 64px !important; flex: none; }
 .schema span { white-space: nowrap; }
 .knoppen { justify-content: space-between; flex-wrap: wrap; }
-.link.gevaar { color: #b3261e; }
+button.link.gevaar { color: #b3261e; border-color: #b3261e; }
+button.link.gevaar:hover { background: #f6e1df; }
 .hoeveel { margin: 4px 0 8px 28px; }
 .opbouw { margin-top: 10px; overflow-x: auto; }
 .opbouw ul { margin: 6px 0; }
@@ -282,3 +284,19 @@ button.knop-uitloggen:hover { background: #efd3d0; }
 .pil.geel { background: #f3ecc4; color: #625400; }
 .pil.groen { background: #e4ebe2; color: #2f4a31; }
 .pil.grijs { background: #efede6; color: #6b6e62; }
+
+/* Klant verwijderen (optie 4B) */
+.verwijdervak { background: var(--kaart); border: 2px solid var(--rood); border-radius: 12px; padding: 14px; margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.verwijdervak p { margin: 0; }
+.verwijdervak label { display: flex; flex-direction: column; gap: 6px; font-size: 0.95rem; }
+.verwijdervak .knoprij button { padding: 10px 18px; font-size: 16px; }
+button.knop-klein.knop-rood.vol { background: var(--rood); color: white; }
+
+/* Klantenlijst: schakelaar "kiesbaar bij klokken" (optie 5A) */
+.lijst li.met-schakelaar { display: flex; align-items: stretch; background: var(--kaart); border: 1px solid var(--rand); border-radius: 10px; }
+.lijst li.met-schakelaar a { flex: 1; border: none; background: none; min-width: 0; }
+button.schakelaar { display: flex; align-items: center; gap: 6px; background: none; padding: 0 14px 0 6px; border-radius: 0 10px 10px 0; color: var(--grijs); }
+.schakelaar .baan { position: relative; width: 46px; height: 26px; border-radius: 99px; background: #cfcbbd; flex: none; transition: background 0.15s; }
+.schakelaar .baan::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: white; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: left 0.15s; }
+.schakelaar.aan .baan { background: var(--groen); }
+.schakelaar.aan .baan::after { left: 23px; }

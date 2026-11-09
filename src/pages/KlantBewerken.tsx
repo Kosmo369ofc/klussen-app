@@ -111,12 +111,15 @@ export default function KlantBewerken() {
   const [verwijderd, setVerwijderd] = useState<string[]>([])
   const [bezig, setBezig] = useState(false)
   const [fout, setFout] = useState('')
+  // Naam zoals hij is opgeslagen; die moet je intypen om te verwijderen.
+  const [opgeslagenNaam, setOpgeslagenNaam] = useState('')
 
   useEffect(() => {
     if (!id) return
     supabase.from('klanten').select('*').eq('id', id).single().then(({ data }) => {
       const k = data as Klant
       setNaam(k.naam)
+      setOpgeslagenNaam(k.naam)
       setAdres(k.adres ?? '')
       setTelefoon(k.telefoon ?? '')
       setContactpersoon(k.contactpersoon ?? '')
@@ -598,6 +601,81 @@ export default function KlantBewerken() {
         {fout && <p className="fout">{fout}</p>}
         <button className="groot" disabled={bezig}>{bezig ? 'Bezig…' : 'Opslaan'}</button>
       </form>
+      {!nieuw && id && <KlantVerwijderen id={id} naam={opgeslagenNaam} pad={bestand?.pad ?? null} />}
     </main>
+  )
+}
+
+// Klant verwijderen: eerst de naam intypen (optie 4B), dan pas kan het.
+function KlantVerwijderen({ id, naam, pad }: { id: string; naam: string; pad: string | null }) {
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const [getypt, setGetypt] = useState('')
+  const [aantal, setAantal] = useState<number | null>(null)
+  const [bezig, setBezig] = useState(false)
+  const [fout, setFout] = useState('')
+  const klopt = naam !== '' && getypt.trim().toLowerCase() === naam.trim().toLowerCase()
+
+  async function openen() {
+    setOpen(true)
+    setGetypt('')
+    setFout('')
+    const { count } = await supabase.from('bezoeken').select('id', { count: 'exact', head: true }).eq('klant_id', id)
+    setAantal(count ?? 0)
+  }
+
+  async function verwijderen() {
+    if (!klopt) return
+    setBezig(true)
+    setFout('')
+    // Foto's en contractbestand opzoeken voordat de regels weg zijn.
+    const { data: bezoeken } = await supabase.from('bezoeken').select('id').eq('klant_id', id)
+    const ids = (bezoeken ?? []).map((b: { id: string }) => b.id)
+    const { data: fotos } = ids.length
+      ? await supabase.from('bezoek_fotos').select('pad').in('bezoek_id', ids)
+      : { data: [] }
+    const { error } = await supabase.rpc('klant_verwijderen', { klant: id })
+    if (error) {
+      setBezig(false)
+      setFout(
+        error.message.includes('klant_verwijderen')
+          ? 'Verwijderen kan nog niet: de SQL-stap in Supabase is nog niet gedaan.'
+          : 'Verwijderen lukte niet. Probeer het opnieuw.',
+      )
+      return
+    }
+    // Bestanden opruimen; lukt dit niet, dan is de klant toch weg.
+    const fotoPaden = (fotos ?? []).map((f: { pad: string }) => f.pad)
+    if (fotoPaden.length) await supabase.storage.from('fotos').remove(fotoPaden)
+    if (pad) await supabase.storage.from('contracten').remove([pad])
+    navigate('/klanten', { replace: true, state: { melding: `${naam} is verwijderd.` } })
+  }
+
+  if (!open) {
+    return (
+      <div className="knoprij" style={{ justifyContent: "center", marginTop: 8 }}>
+        <button type="button" className="knop-klein knop-rood" onClick={openen}>🗑️ Klant verwijderen</button>
+      </div>
+    )
+  }
+  return (
+    <div className="verwijdervak">
+      <p><strong>{naam} verwijderen?</strong></p>
+      <p className="klein">
+        {aantal ? `Ook ${aantal === 1 ? 'het bezoek' : `de ${aantal} bezoeken`} met foto's gaan weg, net als de werkzaamheden.` : 'Ook de werkzaamheden en afspraken van deze klant gaan weg.'}{' '}
+        Geklokte uren blijven bewaard, zonder klantnaam. Dit kan niet ongedaan worden gemaakt.
+      </p>
+      <label>
+        <span>Typ <strong>{naam}</strong> om te bevestigen</span>
+        <input value={getypt} onChange={(e) => setGetypt(e.target.value)} autoComplete="off" />
+      </label>
+      {fout && <p className="fout">{fout}</p>}
+      <div className="knoprij">
+        <button type="button" className="knop-klein" disabled={bezig} onClick={() => setOpen(false)}>Annuleren</button>
+        <button type="button" className="knop-klein knop-rood vol" disabled={!klopt || bezig} onClick={verwijderen}>
+          {bezig ? 'Bezig…' : 'Verwijderen'}
+        </button>
+      </div>
+    </div>
   )
 }
